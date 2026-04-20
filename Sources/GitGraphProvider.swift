@@ -213,21 +213,22 @@ enum GitGraphProvider {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Lists local + remote-tracking branches. A literal NUL byte (not the
-    /// git-log `%x00` placeholder — `for-each-ref` uses a different format
-    /// language that ignores it) separates fields per ref; each ref ends
-    /// with a newline so we split on both.
+    /// Lists local + remote-tracking branches. Tab separates fields per ref
+    /// (git `for-each-ref` ignores the `%x00` log-format placeholder, and
+    /// passing a literal NUL byte as a process argument aborts Foundation's
+    /// argv conversion — so `\t` is the safest inert separator that cannot
+    /// appear in ref names or SHAs); each ref ends with a newline.
     static func fetchBranches(directory: String) -> [BranchRef] {
         let args = [
             "for-each-ref",
-            "--format=%(refname)\u{00}%(objectname)",
+            "--format=%(refname)\t%(objectname)",
             "refs/heads/",
             "refs/remotes/"
         ]
         guard let output = runGit(in: directory, arguments: args) else { return [] }
         var refs: [BranchRef] = []
         output.enumerateLines { line, _ in
-            let parts = line.split(separator: "\u{00}", maxSplits: 1, omittingEmptySubsequences: false)
+            let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { return }
             let full = String(parts[0])
             let sha = String(parts[1])
@@ -248,17 +249,17 @@ enum GitGraphProvider {
     /// Lists annotated + lightweight tags. Tags can point at tag objects,
     /// so we resolve `%(*objectname)` (target commit) with fallback to
     /// `%(objectname)` for lightweight tags that directly reference a commit.
-    /// See fetchBranches() for why the separator is a literal NUL byte.
+    /// See fetchBranches() for why the separator is Tab.
     static func fetchTags(directory: String) -> [TagRef] {
         let args = [
             "for-each-ref",
-            "--format=%(refname:short)\u{00}%(objectname)\u{00}%(*objectname)",
+            "--format=%(refname:short)\t%(objectname)\t%(*objectname)",
             "refs/tags/"
         ]
         guard let output = runGit(in: directory, arguments: args) else { return [] }
         var tags: [TagRef] = []
         output.enumerateLines { line, _ in
-            let parts = line.split(separator: "\u{00}", maxSplits: 2, omittingEmptySubsequences: false)
+            let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
             guard parts.count == 3 else { return }
             let name = String(parts[0])
             let objSha = String(parts[1])
