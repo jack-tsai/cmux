@@ -16,23 +16,41 @@ struct GitGraphPanelView: View {
     @State private var stashesExpanded: Bool = true
     @State private var worktreesExpanded: Bool = true
 
+    /// Snapshot of the workspace's current ghostty theme. Kept in view state
+    /// (rather than recomputed on every redraw) so we only parse + resolve
+    /// colors when `CmuxThemeNotifications.reloadConfig` actually fires.
+    @State private var ghosttyConfig: GhosttyConfig = GhosttyConfig.load()
+
+    /// Derived palette consumed by every subview — single source of truth
+    /// so swapping themes only touches one computed property.
+    private var theme: GitGraphTheme { GitGraphTheme.make(from: ghosttyConfig) }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            Divider()
+            Rectangle().fill(theme.divider).frame(height: 1)
             HStack(spacing: 0) {
                 if sidebarVisible {
                     refsSidebar
-                    Divider()
+                    Rectangle().fill(theme.divider).frame(width: 1)
                 }
                 content
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(theme.background)
         .onAppear {
             if panel.snapshot == nil {
                 panel.reload()
             }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: Notification.Name("com.cmuxterm.themes.reload-config")
+            )
+        ) { _ in
+            // The themes-reload broadcast fires after GhosttyApp invalidates
+            // the config cache, so a plain `.load()` returns the fresh theme.
+            ghosttyConfig = GhosttyConfig.load(useCache: false)
         }
     }
 
@@ -42,6 +60,7 @@ struct GitGraphPanelView: View {
         HStack(spacing: 8) {
             Button(action: { sidebarVisible.toggle() }) {
                 Image(systemName: "sidebar.left")
+                    .foregroundColor(theme.foreground)
             }
             .buttonStyle(.borderless)
             .help(Text(String(
@@ -51,7 +70,7 @@ struct GitGraphPanelView: View {
 
             Text(panel.workspaceDirectory.asDisplayPath)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .layoutPriority(0)
@@ -68,6 +87,7 @@ struct GitGraphPanelView: View {
 
             Button(action: { panel.reload() }) {
                 Image(systemName: "arrow.clockwise")
+                    .foregroundColor(theme.foreground)
             }
             .buttonStyle(.borderless)
             .help(Text(String(
@@ -77,14 +97,14 @@ struct GitGraphPanelView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.6))
+        .background(theme.toolbar)
     }
 
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
             TextField(
                 String(
                     localized: "gitGraph.search.placeholder",
@@ -94,11 +114,12 @@ struct GitGraphPanelView: View {
             )
             .textFieldStyle(.plain)
             .font(.system(size: 12))
+            .foregroundColor(theme.foreground)
             if !panel.searchQuery.isEmpty {
                 Button(action: { panel.searchQuery = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                 }
                 .buttonStyle(.borderless)
             }
@@ -107,11 +128,11 @@ struct GitGraphPanelView: View {
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 5)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(theme.inputBackground)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 5)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                .stroke(theme.divider, lineWidth: 0.5)
         )
     }
 
@@ -182,7 +203,7 @@ struct GitGraphPanelView: View {
             }
         }
         .frame(width: 220)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.4))
+        .background(theme.sidebar)
     }
 
     private struct RefRowData: Identifiable {
@@ -206,7 +227,7 @@ struct GitGraphPanelView: View {
                     defaultValue: "None"
                 ))
                 .font(.system(size: 11))
-                .foregroundColor(.secondary.opacity(0.7))
+                .foregroundColor(theme.faint)
                 .italic()
                 .padding(.leading, 24)
                 .padding(.vertical, 3)
@@ -215,7 +236,7 @@ struct GitGraphPanelView: View {
                     Button(action: { scrollToSha(item.targetSha) }) {
                         Text(item.label)
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(item.isMuted ? .secondary : .primary)
+                            .foregroundColor(item.isMuted ? theme.secondary : theme.foreground)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.leading, 24)
                             .padding(.trailing, 6)
@@ -229,15 +250,15 @@ struct GitGraphPanelView: View {
             HStack(spacing: 4) {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(theme.secondary)
                     .textCase(.uppercase)
                 Spacer()
                 Text("\(count)")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(theme.faint)
                     .padding(.horizontal, 5)
                     .background(
-                        Capsule().fill(Color.secondary.opacity(0.12))
+                        Capsule().fill(theme.secondary.opacity(0.12))
                     )
             }
             .padding(.horizontal, 8)
@@ -289,12 +310,13 @@ struct GitGraphPanelView: View {
         VStack(spacing: 8) {
             Image(systemName: "chart.bar.doc.horizontal")
                 .font(.system(size: 28))
-                .foregroundColor(.secondary.opacity(0.5))
+                .foregroundColor(theme.faint)
             Text(title)
                 .font(.system(size: 13, weight: .medium))
+                .foregroundColor(theme.foreground)
             Text(subtitle)
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
                 .truncationMode(.middle)
@@ -360,16 +382,16 @@ struct GitGraphPanelView: View {
     private func uncommittedRow(count: Int) -> some View {
         HStack(spacing: 10) {
             Circle()
-                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .strokeBorder(theme.headMarker, lineWidth: 2)
                 .frame(width: 10, height: 10)
             Text(uncommittedLabel(count: count))
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.green)
+                .foregroundColor(theme.success)
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.green.opacity(0.06))
+        .background(theme.success.opacity(0.08))
     }
 
     private func commitRow(_ commit: CommitNode) -> some View {
@@ -401,24 +423,25 @@ struct GitGraphPanelView: View {
 
             highlightedText(commit.subject)
                 .font(.system(size: 12))
+                .foregroundColor(theme.foreground)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(relativeDate(commit.date))
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
                 .frame(width: 72, alignment: .trailing)
 
             Text(commit.authorName)
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
                 .lineLimit(1)
                 .frame(width: 100, alignment: .trailing)
 
             Text(commit.shortSha)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.secondary.opacity(0.8))
+                .foregroundColor(theme.faint)
                 .frame(width: 72, alignment: .trailing)
         }
         // No vertical padding: the HStack's intrinsic height comes from the
@@ -435,9 +458,9 @@ struct GitGraphPanelView: View {
     private func rowBackground(isExpanded: Bool, isMatch: Bool) -> some View {
         Group {
             if isExpanded {
-                Color.accentColor.opacity(0.12)
+                theme.selection.opacity(0.35)
             } else if isMatch {
-                Color.orange.opacity(0.18)
+                theme.searchMatch
             } else {
                 Color.clear
             }
@@ -470,6 +493,8 @@ struct GitGraphPanelView: View {
         var result = AttributedString("")
         var cursor = text.startIndex
         var searchStart = lowerText.startIndex
+        let highlightBg = theme.searchHighlightBg
+        let highlightFg = theme.searchHighlightFg
         while let range = lowerText.range(of: lowerQuery, range: searchStart..<lowerText.endIndex) {
             // Map the lowercased range onto the original `text` (same Unicode
             // structure because `lowercased()` is 1:1 for BMP letters used in
@@ -486,8 +511,8 @@ struct GitGraphPanelView: View {
                 result.append(AttributedString(String(text[cursor..<matchLow])))
             }
             var highlighted = AttributedString(String(text[matchLow..<matchHigh]))
-            highlighted.backgroundColor = .orange
-            highlighted.foregroundColor = .black
+            highlighted.backgroundColor = highlightBg
+            highlighted.foregroundColor = highlightFg
             result.append(highlighted)
             cursor = matchHigh
             searchStart = range.upperBound
@@ -513,12 +538,12 @@ struct GitGraphPanelView: View {
                         defaultValue: "Loading commit details…"
                     ))
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(theme.secondary)
                 }
             } else if let detail {
                 detailMetadataView(detail)
                 if !detail.files.isEmpty {
-                    Divider()
+                    Rectangle().fill(theme.divider).frame(height: 1)
                     fileListView(detail.files, sha: detail.sha)
                 }
             } else {
@@ -527,13 +552,13 @@ struct GitGraphPanelView: View {
                     defaultValue: "Commit details unavailable."
                 ))
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+        .background(theme.expandedBackground)
     }
 
     private func detailMetadataView(_ detail: CommitDetail) -> some View {
@@ -568,6 +593,7 @@ struct GitGraphPanelView: View {
             if !detail.fullMessage.isEmpty {
                 Text(detail.fullMessage)
                     .font(.system(size: 12))
+                    .foregroundColor(theme.foreground)
                     .padding(.top, 6)
                     .padding(.leading, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -580,13 +606,14 @@ struct GitGraphPanelView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(key)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
                 .frame(width: 70, alignment: .leading)
             Text(value)
                 .font(.system(
                     size: 11,
                     design: monospace ? .monospaced : .default
                 ))
+                .foregroundColor(theme.foreground)
                 .textSelection(.enabled)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -604,19 +631,20 @@ struct GitGraphPanelView: View {
                     defaultValue: "Changed files"
                 ))
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundColor(theme.secondary)
                 Text("(\(files.count))")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(theme.faint)
             }
             .padding(.bottom, 2)
             ForEach(files, id: \.path) { file in
                 HStack(spacing: 6) {
                     Image(systemName: "doc")
                         .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                     Text(file.path)
                         .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(theme.foreground)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 8)
@@ -626,17 +654,17 @@ struct GitGraphPanelView: View {
                             defaultValue: "binary"
                         ))
                         .font(.system(size: 10))
-                        .foregroundColor(.secondary.opacity(0.7))
+                        .foregroundColor(theme.faint)
                     } else {
                         if let added = file.added {
                             Text("+\(added)")
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.green)
+                                .foregroundColor(theme.success)
                         }
                         if let deleted = file.deleted {
                             Text("-\(deleted)")
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.red)
+                                .foregroundColor(theme.danger)
                         }
                     }
                 }
@@ -716,7 +744,7 @@ struct GitGraphPanelView: View {
             height: dotRadius * 2
         )
         if isHead {
-            context.stroke(Path(ellipseIn: dotRect), with: .color(.yellow), lineWidth: 2)
+            context.stroke(Path(ellipseIn: dotRect), with: .color(theme.headMarker), lineWidth: 2)
             context.fill(
                 Path(ellipseIn: dotRect.insetBy(dx: 2, dy: 2)),
                 with: .color(laneColor(for: commit.laneIndex))
@@ -732,29 +760,21 @@ struct GitGraphPanelView: View {
     }
 
     private func laneColor(for laneIndex: Int) -> Color {
-        let palette: [Color] = [
-            Color(red: 0.04, green: 0.52, blue: 1.00),
-            Color(red: 0.75, green: 0.35, blue: 0.95),
-            Color(red: 0.19, green: 0.82, blue: 0.35),
-            Color(red: 1.00, green: 0.62, blue: 0.04),
-            Color(red: 1.00, green: 0.22, blue: 0.37),
-            Color(red: 0.35, green: 0.78, blue: 0.98)
-        ]
-        return palette[laneIndex % palette.count]
+        theme.lanePalette[laneIndex % theme.lanePalette.count]
     }
 
     private func refBadge(_ ref: GitRef) -> some View {
         let color: Color = {
             switch ref.kind {
-            case .localBranch: return Color.blue
-            case .remoteBranch: return Color.gray
-            case .tag: return Color.purple
-            case .head: return Color.orange
+            case .localBranch: return theme.refBadgeLocal
+            case .remoteBranch: return theme.refBadgeRemote
+            case .tag: return theme.refBadgeTag
+            case .head: return theme.headMarker
             }
         }()
         return Text(ref.name)
             .font(.system(size: 10, design: .monospaced))
-            .foregroundColor(.white)
+            .foregroundColor(theme.refBadgeText(on: color))
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
             .background(color)
@@ -768,6 +788,7 @@ struct GitGraphPanelView: View {
                 defaultValue: "Load more commits…"
             ))
             .font(.system(size: 12))
+            .foregroundColor(theme.foreground)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
         }
@@ -791,4 +812,169 @@ private extension String {
 enum GitGraphLaneMetrics {
     static let laneSpacing: CGFloat = 16
     static let rowHeight: CGFloat = 28
+}
+
+/// Derives every colour the Git Graph panel needs from the workspace's
+/// ghostty theme so the panel looks native under any configured scheme
+/// (solarized, tokyonight, dracula, rose-pine, etc.). All palette indices
+/// below refer to the 16-colour ANSI terminal palette baked into the
+/// ghostty config — lanes therefore rotate through colours the user
+/// already sees in their terminal.
+struct GitGraphTheme {
+    // Core chrome
+    let background: Color
+    let toolbar: Color
+    let sidebar: Color
+    let inputBackground: Color
+    let expandedBackground: Color
+    let divider: Color
+
+    // Text
+    let foreground: Color
+    let secondary: Color
+    let faint: Color
+
+    // Accents
+    let selection: Color
+    let headMarker: Color
+    let success: Color
+    let danger: Color
+
+    // Search highlighting
+    let searchMatch: Color
+    let searchHighlightBg: Color
+    let searchHighlightFg: Color
+
+    // Lane / ref badges
+    let lanePalette: [Color]
+    let refBadgeLocal: Color
+    let refBadgeRemote: Color
+    let refBadgeTag: Color
+
+    /// Picks a readable label colour for a ref badge whose fill may be
+    /// dark (then the label is white) or light (then the label is black).
+    func refBadgeText(on fill: Color) -> Color {
+        NSColor(fill).isLightColor ? .black : .white
+    }
+
+    static func make(from config: GhosttyConfig) -> GitGraphTheme {
+        let background = config.backgroundColor
+        let foreground = config.foregroundColor
+        let isDarkBg = !background.isLightColor
+
+        // Toolbar/sidebar sit just off the canvas background; nudging a few
+        // percent keeps them legibly separate without clashing with themes
+        // that already use near-identical neighbouring colours.
+        let chromeTint = isDarkBg
+            ? background.lighten(by: 0.04)
+            : background.darken(by: 0.04)
+        let sidebarTint = isDarkBg
+            ? background.lighten(by: 0.02)
+            : background.darken(by: 0.02)
+        let inputTint = isDarkBg
+            ? background.lighten(by: 0.08)
+            : background.darken(by: 0.06)
+        let expandedTint = isDarkBg
+            ? background.lighten(by: 0.06)
+            : background.darken(by: 0.04)
+        let dividerTint = isDarkBg
+            ? background.lighten(by: 0.12)
+            : background.darken(by: 0.12)
+
+        // Text shades: foreground → 100%, secondary → 60%, faint → 40%.
+        let secondaryFg = foreground.blended(withFraction: 0.4, of: background) ?? foreground
+        let faintFg = foreground.blended(withFraction: 0.6, of: background) ?? foreground
+
+        let selection = Color(nsColor: config.selectionBackground)
+
+        // Palette picks: ANSI 1 (red) → danger, ANSI 2 (green) → success,
+        // ANSI 3 (yellow) → HEAD ring, ANSI 4/5/6 feed the lane rotation
+        // alongside 1/2/3 for branch diversity.
+        let ansi = { (i: Int) -> Color in
+            if let c = config.palette[i] { return Color(nsColor: c) }
+            return GitGraphTheme.ansiFallback(index: i, onDark: isDarkBg)
+        }
+
+        let success = ansi(2)
+        let danger = ansi(1)
+        let yellow = ansi(3)
+        let blue = ansi(4)
+        let magenta = ansi(5)
+        let cyan = ansi(6)
+
+        // Lane palette rotates through six ANSI colours that are visually
+        // distinct across every bundled ghostty theme we've checked.
+        let lanePalette: [Color] = [blue, magenta, success, yellow, danger, cyan]
+
+        // Search match background lifts yellow enough to be obvious without
+        // stomping on a commit row's lane colour.
+        let searchMatch = yellow.opacity(isDarkBg ? 0.25 : 0.35)
+        let searchHighlightBg = yellow
+        let searchHighlightFg: Color = NSColor(yellow).isLightColor ? .black : .white
+
+        return GitGraphTheme(
+            background: Color(nsColor: background),
+            toolbar: Color(nsColor: chromeTint),
+            sidebar: Color(nsColor: sidebarTint),
+            inputBackground: Color(nsColor: inputTint),
+            expandedBackground: Color(nsColor: expandedTint),
+            divider: Color(nsColor: dividerTint),
+            foreground: Color(nsColor: foreground),
+            secondary: Color(nsColor: secondaryFg),
+            faint: Color(nsColor: faintFg),
+            selection: selection,
+            headMarker: yellow,
+            success: success,
+            danger: danger,
+            searchMatch: searchMatch,
+            searchHighlightBg: searchHighlightBg,
+            searchHighlightFg: searchHighlightFg,
+            lanePalette: lanePalette,
+            refBadgeLocal: blue,
+            refBadgeRemote: Color(nsColor: secondaryFg),
+            refBadgeTag: magenta
+        )
+    }
+
+    /// Fallback when a ghostty theme hasn't populated a palette slot.
+    /// Values mirror the standard xterm "dark background"/"light background"
+    /// variants so the panel never falls back to a muddy grey.
+    private static func ansiFallback(index: Int, onDark: Bool) -> Color {
+        let dark: [Color] = [
+            .black,
+            Color(red: 0.80, green: 0.27, blue: 0.30),
+            Color(red: 0.40, green: 0.78, blue: 0.31),
+            Color(red: 0.84, green: 0.73, blue: 0.18),
+            Color(red: 0.26, green: 0.56, blue: 0.92),
+            Color(red: 0.67, green: 0.33, blue: 0.83),
+            Color(red: 0.24, green: 0.74, blue: 0.78)
+        ]
+        let light: [Color] = [
+            .black,
+            Color(red: 0.70, green: 0.18, blue: 0.22),
+            Color(red: 0.20, green: 0.55, blue: 0.23),
+            Color(red: 0.65, green: 0.52, blue: 0.09),
+            Color(red: 0.15, green: 0.40, blue: 0.75),
+            Color(red: 0.55, green: 0.24, blue: 0.70),
+            Color(red: 0.10, green: 0.55, blue: 0.60)
+        ]
+        let palette = onDark ? dark : light
+        return palette[max(0, min(palette.count - 1, index))]
+    }
+}
+
+private extension NSColor {
+    /// Symmetric counterpart to `NSColor.darken(by:)` already defined in
+    /// GhosttyConfig; nudges luminance upward without a full invert so
+    /// light-theme backgrounds don't flash white.
+    func lighten(by amount: CGFloat) -> NSColor {
+        guard let rgb = self.usingColorSpace(.sRGB) else { return self }
+        let f = max(0, min(1, amount))
+        return NSColor(
+            red: rgb.redComponent + (1 - rgb.redComponent) * f,
+            green: rgb.greenComponent + (1 - rgb.greenComponent) * f,
+            blue: rgb.blueComponent + (1 - rgb.blueComponent) * f,
+            alpha: rgb.alphaComponent
+        )
+    }
 }
