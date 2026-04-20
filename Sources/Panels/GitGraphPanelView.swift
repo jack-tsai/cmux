@@ -151,25 +151,23 @@ struct GitGraphPanelView: View {
     private func commitRow(_ commit: CommitNode) -> some View {
         let isHead = commit.sha == panel.snapshot?.headSha
             && (panel.snapshot?.uncommittedCount ?? 0) == 0
+        let laneCount = max(
+            commit.laneIndex + 1,
+            (commit.parentLanes.max() ?? 0) + 1,
+            (commit.passThroughLanes.max() ?? 0) + 1
+        )
+        let graphWidth = CGFloat(laneCount) * GitGraphLaneMetrics.laneSpacing
+            + GitGraphLaneMetrics.laneSpacing
         return HStack(spacing: 10) {
-            // Lane column placeholder — real Canvas-based lane rendering lands
-            // in a later task (1.7 full implementation). For now draw a dot
-            // and a faint vertical hint so the column has visible presence.
-            ZStack {
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.25))
-                    .frame(width: 1.5)
-                if isHead {
-                    Circle()
-                        .strokeBorder(Color.yellow, lineWidth: 2)
-                        .frame(width: 10, height: 10)
-                } else {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 7, height: 7)
-                }
+            Canvas { context, size in
+                drawLanes(
+                    in: context,
+                    size: size,
+                    commit: commit,
+                    isHead: isHead
+                )
             }
-            .frame(width: 24)
+            .frame(width: graphWidth, height: GitGraphLaneMetrics.rowHeight)
 
             // Ref badges
             if !commit.refs.isEmpty {
@@ -205,6 +203,108 @@ struct GitGraphPanelView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Graph lane drawing
+
+    private func drawLanes(
+        in context: GraphicsContext,
+        size: CGSize,
+        commit: CommitNode,
+        isHead: Bool
+    ) {
+        let midY = size.height / 2
+        let bottomY = size.height
+        let dotRadius: CGFloat = isHead ? 5.5 : 3.5
+        let ownX = laneCenterX(for: commit.laneIndex)
+
+        // Pass-through lanes: branches unrelated to this commit that continue
+        // from the row above to the row below. Draw a full vertical segment.
+        for lane in commit.passThroughLanes {
+            let x = laneCenterX(for: lane)
+            var path = Path()
+            path.move(to: CGPoint(x: x, y: 0))
+            path.addLine(to: CGPoint(x: x, y: bottomY))
+            context.stroke(path, with: .color(laneColor(for: lane)), lineWidth: 1.5)
+        }
+
+        // Top half of the own lane (segment coming in from the row above).
+        var topSegment = Path()
+        topSegment.move(to: CGPoint(x: ownX, y: 0))
+        topSegment.addLine(to: CGPoint(x: ownX, y: midY))
+        context.stroke(
+            topSegment,
+            with: .color(laneColor(for: commit.laneIndex)),
+            lineWidth: 1.5
+        )
+
+        // Connector lines from this commit's dot to each parent lane's top.
+        // First parent: straight vertical (inherits own lane). Others: bend
+        // sideways and then continue down.
+        for (index, parentLane) in commit.parentLanes.enumerated() {
+            let parentX = laneCenterX(for: parentLane)
+            var path = Path()
+            path.move(to: CGPoint(x: ownX, y: midY))
+            if index == 0 && parentLane == commit.laneIndex {
+                // Straight down — trunk continuation.
+                path.addLine(to: CGPoint(x: ownX, y: bottomY))
+            } else {
+                // Bend to the parent lane: short diagonal then vertical.
+                let bendY = midY + (bottomY - midY) * 0.55
+                path.addCurve(
+                    to: CGPoint(x: parentX, y: bendY),
+                    control1: CGPoint(x: ownX, y: bendY * 0.8),
+                    control2: CGPoint(x: parentX, y: midY + (bendY - midY) * 0.2)
+                )
+                path.addLine(to: CGPoint(x: parentX, y: bottomY))
+            }
+            context.stroke(path, with: .color(laneColor(for: parentLane)), lineWidth: 1.5)
+        }
+
+        // Commit dot on top of any lines that pass through.
+        let dotRect = CGRect(
+            x: ownX - dotRadius,
+            y: midY - dotRadius,
+            width: dotRadius * 2,
+            height: dotRadius * 2
+        )
+        if isHead {
+            // Ring-style marker so the HEAD commit stays legible even on a
+            // coloured lane background.
+            context.stroke(
+                Path(ellipseIn: dotRect),
+                with: .color(.yellow),
+                lineWidth: 2
+            )
+            context.fill(
+                Path(ellipseIn: dotRect.insetBy(dx: 2, dy: 2)),
+                with: .color(laneColor(for: commit.laneIndex))
+            )
+        } else {
+            context.fill(
+                Path(ellipseIn: dotRect),
+                with: .color(laneColor(for: commit.laneIndex))
+            )
+        }
+    }
+
+    private func laneCenterX(for laneIndex: Int) -> CGFloat {
+        GitGraphLaneMetrics.laneSpacing / 2
+            + CGFloat(laneIndex) * GitGraphLaneMetrics.laneSpacing
+    }
+
+    /// Six-colour rotating palette mirroring the HTML mockup (see
+    /// `docs/uidesign/git-graph-panel-design.html`).
+    private func laneColor(for laneIndex: Int) -> Color {
+        let palette: [Color] = [
+            Color(red: 0.04, green: 0.52, blue: 1.00),  // lane-0
+            Color(red: 0.75, green: 0.35, blue: 0.95),  // lane-1
+            Color(red: 0.19, green: 0.82, blue: 0.35),  // lane-2
+            Color(red: 1.00, green: 0.62, blue: 0.04),  // lane-3
+            Color(red: 1.00, green: 0.22, blue: 0.37),  // lane-4
+            Color(red: 0.35, green: 0.78, blue: 0.98)   // lane-5
+        ]
+        return palette[laneIndex % palette.count]
     }
 
     private func refBadge(_ ref: GitRef) -> some View {
@@ -265,4 +365,15 @@ private extension String {
         }
         return self
     }
+}
+
+/// Graph-column sizing constants shared between the row layout and the
+/// Canvas drawer so the commit dot lines up with lane separator positions.
+enum GitGraphLaneMetrics {
+    /// Horizontal spacing between adjacent lanes (centre to centre).
+    static let laneSpacing: CGFloat = 16
+    /// Vertical height of one commit row. Matches `.padding(.vertical, 5)` +
+    /// the row's content and is passed to Canvas so lane segments reach the
+    /// row edges (needed for seamless vertical lines across adjacent rows).
+    static let rowHeight: CGFloat = 28
 }

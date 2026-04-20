@@ -28,8 +28,14 @@ struct CommitNode: Equatable, Identifiable, Hashable {
     let refs: [GitRef]
     /// Lane index within the rendered graph column (0-based).
     let laneIndex: Int
-    /// Lane indices that this commit connects to in the row above (for merge lines).
+    /// Lane indices that this commit connects to in the row below (to parents).
+    /// Used by the renderer to draw connector lines from the commit dot down
+    /// to parent lane positions (merge lines bending sideways to merge sources).
     let parentLanes: [Int]
+    /// Lanes occupied by unrelated in-flight branches that pass through this
+    /// row but do not originate or terminate here. The renderer draws a plain
+    /// vertical segment in each of these lanes.
+    let passThroughLanes: [Int]
 
     var id: String { sha }
     var shortSha: String { String(sha.prefix(8)) }
@@ -222,7 +228,8 @@ enum GitGraphProvider {
                 // Lane assignment is a second pass so parent positions are
                 // known when each row is placed. See assignLanes(...).
                 laneIndex: 0,
-                parentLanes: []
+                parentLanes: [],
+                passThroughLanes: []
             ))
         }
         return assignLanes(commits: nodes)
@@ -299,6 +306,15 @@ enum GitGraphProvider {
                 lane = allocateLane()
             }
 
+            // Snapshot the lanes that are currently reserved *before* we add
+            // this commit's parent reservations. Any lane in this set that is
+            // not the commit's own lane represents an unrelated branch that
+            // passes through this row — the renderer draws a vertical segment
+            // in each of those lanes.
+            let passThroughLanes = Set(reservations.values)
+                .subtracting([lane])
+                .sorted()
+
             var parentLanes: [Int] = []
             for (index, parentSha) in commit.parents.enumerated() {
                 if let existing = reservations[parentSha] {
@@ -338,7 +354,8 @@ enum GitGraphProvider {
                 subject: commit.subject,
                 refs: commit.refs,
                 laneIndex: lane,
-                parentLanes: parentLanes
+                parentLanes: parentLanes,
+                passThroughLanes: passThroughLanes
             ))
         }
         return result
