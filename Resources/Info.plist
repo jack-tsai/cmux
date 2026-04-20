@@ -153,9 +153,9 @@
 	<key>SUAutomaticallyUpdate</key>
 	<false/>
 	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<false/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/manaflow-ai/cmux/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/jack-tsai/cmux/releases/latest/download/appcast.xml</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUSendProfileInfo</key>
