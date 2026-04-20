@@ -6729,6 +6729,15 @@ struct ContentView: View {
         )
         contributions.append(
             CommandPaletteCommandContribution(
+                commandId: "palette.newGitGraphTab",
+                title: constant(String(localized: "command.newGitGraphTab.title", defaultValue: "New Tab (Git Graph)")),
+                subtitle: constant(String(localized: "command.newGitGraphTab.subtitle", defaultValue: "Tab")),
+                shortcutHint: nil,
+                keywords: ["new", "git", "graph", "commits", "branches", "history", "tab"]
+            )
+        )
+        contributions.append(
+            CommandPaletteCommandContribution(
                 commandId: "palette.closeTab",
                 title: constant(String(localized: "command.closeTab.title", defaultValue: "Close Tab")),
                 subtitle: constant(String(localized: "command.closeTab.subtitle", defaultValue: "Tab")),
@@ -7448,6 +7457,9 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 _ = AppDelegate.shared?.openBrowserAndFocusAddressBar()
             }
+        }
+        registry.register(commandId: "palette.newGitGraphTab") {
+            tabManager.newGitGraphSurface()
         }
         registry.register(commandId: "palette.closeTab") {
             tabManager.closeCurrentPanelWithConfirmation()

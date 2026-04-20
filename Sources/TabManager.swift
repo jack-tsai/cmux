@@ -4972,6 +4972,13 @@ class TabManager: ObservableObject {
         selectedWorkspace?.newTerminalSurfaceInFocusedPane(focus: true)
     }
 
+    /// Open a new Git Graph panel in the selected workspace's focused pane.
+    /// Used by the command palette entry `palette.newGitGraphTab`.
+    func newGitGraphSurface() {
+        selectedWorkspace?.clearSplitZoom()
+        selectedWorkspace?.newGitGraphSurfaceInFocusedPane(focus: true)
+    }
+
     // MARK: - Split Creation
 
     /// Create a new split in the current tab

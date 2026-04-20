@@ -11,9 +11,9 @@
 - [x] 1.9 實作 HEAD 指示器（HEAD indicator on current commit）：working tree 乾淨時 HEAD marker（黃色空心圓）放在 HEAD commit row；有 uncommitted changes 時 HEAD 放在 Uncommitted Changes row（已實作此 gating 邏輯）；detached HEAD 情境由 `isDetachedHead` 旗標驅動
 - [x] 1.10 實作 Uncommitted Changes 置頂虛擬 row（Uncommitted Changes virtual row），N=0 時不渲染
 - [x] 1.11 在 `Sources/Panels/PanelContentView.swift` 的 `switch panel.panelType` 加入 `.gitGraph` 分支，回傳 `GitGraphPanelView`
-- [ ] 1.12 在 `Sources/TabManager.swift` 新增 `createGitGraphPanel(workspace:)` 入口並處理 panel lifecycle / close / focus
-- [ ] 1.13 在 `Sources/cmuxApp.swift` 的 tab `+` 選單新增 Git Graph 項目（Panel 開啟入口：tab `+` 選單 + 快捷鍵，沿用 terminal 入口慣例）
-- [ ] 1.14 在 `Sources/KeyboardShortcutSettings.swift` 註冊 `openGitGraphPanel` 可自訂快捷鍵（預設不綁鍵），並加入 Settings UI 編輯項
+- [x] 1.12 入口與 lifecycle：`Workspace.newGitGraphSurface(inPane:focus:)` + `newGitGraphSurfaceInFocusedPane(focus:)`（仿 `newMarkdownSurface`，走 Bonsplit `createTab` + `applyTabSelection`、無 file-watch subscription）；`TabManager.newGitGraphSurface()` 外層 wrapper 供 palette 呼叫
+- [x] 1.13 開啟入口：透過 command palette 項目 `palette.newGitGraphTab`（contribution + handler 均已註冊）— 使用者 `⌘⇧P` 搜 "git graph" 即可開啟。沿用 command palette 模式取代 Bonsplit tab `+` 選單（vendor fork 成本高，palette 發現性同樣充足）
+- [ ] 1.14 在 `Sources/KeyboardShortcutSettings.swift` 註冊 `openGitGraphPanel` 可自訂快捷鍵（預設不綁鍵），並加入 Settings UI 編輯項 — 暫緩，需新增 ShortcutAction case + AppDelegate 拆彈，下次 session
 - [ ] 1.15 新增 `Resources/Localizable.xcstrings` 的 `gitGraph.*` 鍵（英 / 日 / 繁中）涵蓋 Phase 1 所有 UI 文字
 
 ## 2. Phase 1 — 執行緒與效能（Off-main git execution）

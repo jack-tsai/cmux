@@ -10228,6 +10228,62 @@ final class Workspace: Identifiable, ObservableObject {
         return newTerminalSurface(inPane: focusedPaneId, focus: focus)
     }
 
+    /// Create a new Git Graph panel bound to the workspace's root directory.
+    /// Mirrors `newMarkdownSurface` but without file-watch subscription because
+    /// the Git Graph panel refreshes on explicit user action or focus changes.
+    @discardableResult
+    func newGitGraphSurface(
+        inPane paneId: PaneID,
+        focus: Bool? = nil
+    ) -> GitGraphPanel? {
+        let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalPanel?.hostedView
+
+        let gitGraphPanel = GitGraphPanel(
+            workspaceId: id,
+            workspaceDirectory: currentDirectory
+        )
+        panels[gitGraphPanel.id] = gitGraphPanel
+        panelTitles[gitGraphPanel.id] = gitGraphPanel.displayTitle
+
+        guard let newTabId = bonsplitController.createTab(
+            title: gitGraphPanel.displayTitle,
+            icon: gitGraphPanel.displayIcon,
+            kind: SurfaceKind.gitGraph,
+            isDirty: gitGraphPanel.isDirty,
+            isLoading: false,
+            isPinned: false,
+            inPane: paneId
+        ) else {
+            panels.removeValue(forKey: gitGraphPanel.id)
+            panelTitles.removeValue(forKey: gitGraphPanel.id)
+            return nil
+        }
+
+        surfaceIdToPanelId[newTabId] = gitGraphPanel.id
+        if shouldFocusNewTab {
+            bonsplitController.focusPane(paneId)
+            bonsplitController.selectTab(newTabId)
+            applyTabSelection(tabId: newTabId, inPane: paneId)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: gitGraphPanel.id,
+                previousHostedView: previousHostedView
+            )
+        }
+
+        return gitGraphPanel
+    }
+
+    /// Create a new Git Graph panel in the currently focused pane.
+    @discardableResult
+    func newGitGraphSurfaceInFocusedPane(focus: Bool? = nil) -> GitGraphPanel? {
+        guard let focusedPaneId = bonsplitController.focusedPaneId else { return nil }
+        return newGitGraphSurface(inPane: focusedPaneId, focus: focus)
+    }
+
     @discardableResult
     func clearSplitZoom() -> Bool {
         bonsplitController.clearPaneZoom()
