@@ -68,6 +68,7 @@ enum KeyboardShortcutSettings {
 
         // Panels
         case openBrowser
+        case openGitGraph
         case focusBrowserAddressBar
         case browserBack
         case browserForward
@@ -130,6 +131,7 @@ enum KeyboardShortcutSettings {
             case .splitBrowserDown: return String(localized: "shortcut.splitBrowserDown.label", defaultValue: "Split Browser Down")
             case .toggleFileExplorer: return String(localized: "shortcut.toggleFileExplorer.label", defaultValue: "Toggle File Explorer")
             case .openBrowser: return String(localized: "shortcut.openBrowser.label", defaultValue: "Open Browser")
+            case .openGitGraph: return String(localized: "shortcut.openGitGraph.label", defaultValue: "Open Git Graph")
             case .focusBrowserAddressBar: return String(localized: "command.browserFocusAddressBar.title", defaultValue: "Focus Address Bar")
             case .browserBack: return String(localized: "menu.view.back", defaultValue: "Back")
             case .browserForward: return String(localized: "menu.view.forward", defaultValue: "Forward")
@@ -240,6 +242,8 @@ enum KeyboardShortcutSettings {
                 return StoredShortcut(key: "b", command: true, shift: false, option: true, control: false)
             case .openBrowser:
                 return StoredShortcut(key: "l", command: true, shift: true, option: false, control: false)
+            case .openGitGraph:
+                return StoredShortcut(key: "g", command: true, shift: false, option: false, control: false)
             case .focusBrowserAddressBar:
                 return StoredShortcut(key: "l", command: true, shift: false, option: false, control: false)
             case .browserBack:

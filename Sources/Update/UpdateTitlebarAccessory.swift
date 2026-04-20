@@ -256,6 +256,7 @@ struct TitlebarControlsView: View {
     let onToggleSidebar: () -> Void
     let onToggleNotifications: () -> Void
     let onNewTab: () -> Void
+    let onOpenGitGraph: () -> Void
     let visibilityMode: TitlebarControlsVisibilityMode
     @AppStorage("titlebarControlsStyle") private var styleRawValue = TitlebarControlsStyle.classic.rawValue
     @AppStorage(ShortcutHintDebugSettings.titlebarHintXKey) private var titlebarShortcutHintXOffset = ShortcutHintDebugSettings.defaultTitlebarHintX
@@ -272,6 +273,7 @@ struct TitlebarControlsView: View {
         case toggleSidebar
         case showNotifications
         case newTab
+        case openGitGraph
 
         var action: KeyboardShortcutSettings.Action {
             switch self {
@@ -281,6 +283,8 @@ struct TitlebarControlsView: View {
                 return .showNotifications
             case .newTab:
                 return .newTab
+            case .openGitGraph:
+                return .openGitGraph
             }
         }
     }
@@ -407,6 +411,18 @@ struct TitlebarControlsView: View {
             .accessibilityIdentifier("titlebarControl.newTab")
             .accessibilityLabel(String(localized: "titlebar.newWorkspace.accessibilityLabel", defaultValue: "New Workspace"))
             .safeHelp(KeyboardShortcutSettings.Action.newTab.tooltip(String(localized: "titlebar.newWorkspace.tooltip", defaultValue: "New workspace")))
+
+            TitlebarControlButton(config: config, action: {
+                #if DEBUG
+                dlog("titlebar.openGitGraph")
+                #endif
+                onOpenGitGraph()
+            }) {
+                iconLabel(systemName: "chart.bar.doc.horizontal", config: config)
+            }
+            .accessibilityIdentifier("titlebarControl.openGitGraph")
+            .accessibilityLabel(String(localized: "titlebar.openGitGraph.accessibilityLabel", defaultValue: "Open Git Graph"))
+            .safeHelp(KeyboardShortcutSettings.Action.openGitGraph.tooltip(String(localized: "titlebar.openGitGraph.tooltip", defaultValue: "Open Git Graph for this workspace")))
 
         }
 
@@ -559,6 +575,7 @@ struct HiddenTitlebarSidebarControlsView: View {
                 )
             },
             onNewTab: { _ = AppDelegate.shared?.tabManager?.addTab() },
+            onOpenGitGraph: { _ = AppDelegate.shared?.tabManager?.openOrFocusGitGraph() },
             visibilityMode: .onHover
         )
         .frame(width: hostWidth, height: hostHeight, alignment: .leading)
@@ -792,6 +809,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         let toggleSidebar = { _ = AppDelegate.shared?.sidebarState?.toggle() }
         let toggleNotifications: () -> Void = { _ = AppDelegate.shared?.toggleNotificationsPopover(animated: true) }
         let newTab = { _ = AppDelegate.shared?.tabManager?.addTab() }
+        let openGitGraph = { _ = AppDelegate.shared?.tabManager?.openOrFocusGitGraph() }
         hostingView = NonDraggableHostingView(
             rootView: TitlebarControlsView(
                 notificationStore: notificationStore,
@@ -799,6 +817,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
                 onToggleSidebar: toggleSidebar,
                 onToggleNotifications: toggleNotifications,
                 onNewTab: newTab,
+                onOpenGitGraph: openGitGraph,
                 visibilityMode: .alwaysVisible
             )
         )

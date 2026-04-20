@@ -11421,6 +11421,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return true
         }
 
+        // Open Git Graph for the current workspace: Cmd+G (focus existing
+        // panel if already open, else create a new one).
+        if matchConfiguredShortcut(event: event, action: .openGitGraph) {
+            tabManager?.openOrFocusGitGraph()
+            return true
+        }
+
         if matchConfiguredShortcut(event: event, action: .focusBrowserAddressBar) {
             if let focusedPanel = tabManager?.focusedBrowserPanel {
                 focusBrowserAddressBar(in: focusedPanel)

@@ -6755,10 +6755,6 @@ final class Workspace: Identifiable, ObservableObject {
         BonsplitConfiguration.SplitButtonTooltips(
             newTerminal: KeyboardShortcutSettings.Action.newSurface.tooltip("New Terminal"),
             newBrowser: KeyboardShortcutSettings.Action.openBrowser.tooltip("New Browser"),
-            newGitGraph: String(
-                localized: "bonsplit.splitButton.openGitGraph",
-                defaultValue: "Open Git Graph"
-            ),
             splitRight: KeyboardShortcutSettings.Action.splitRight.tooltip("Split Right"),
             splitDown: KeyboardShortcutSettings.Action.splitDown.tooltip("Split Down")
         )
@@ -12377,8 +12373,6 @@ extension Workspace: BonsplitDelegate {
             _ = newTerminalSurface(inPane: pane)
         case "browser":
             _ = newBrowserSurface(inPane: pane)
-        case "gitGraph":
-            openOrFocusGitGraphSurface(inPane: pane)
         default:
             _ = newTerminalSurface(inPane: pane)
         }
@@ -12386,8 +12380,9 @@ extension Workspace: BonsplitDelegate {
 
     /// Opens the existing Git Graph panel for this workspace if one already
     /// exists (there is only ever a single read-only view of the workspace's
-    /// repo), focusing its tab; otherwise creates a new one in the given pane.
-    private func openOrFocusGitGraphSurface(inPane pane: PaneID) {
+    /// repo), focusing its tab; otherwise creates a new one in the focused
+    /// pane. Used by the titlebar button and the ⌘G shortcut.
+    func openOrFocusGitGraphSurface() {
         if let existing = panels.first(where: { $0.value.panelType == .gitGraph })?.value {
             if let surfaceId = surfaceIdToPanelId.first(where: { $0.value == existing.id })?.key,
                let owningPane = bonsplitController.allPaneIds.first(where: { paneId in
@@ -12399,7 +12394,7 @@ extension Workspace: BonsplitDelegate {
                 return
             }
         }
-        _ = newGitGraphSurface(inPane: pane)
+        _ = newGitGraphSurfaceInFocusedPane(focus: true)
     }
 
     func splitTabBar(_ controller: BonsplitController, didRequestTabContextAction action: TabContextAction, for tab: Bonsplit.Tab, inPane pane: PaneID) {

@@ -4979,6 +4979,14 @@ class TabManager: ObservableObject {
         selectedWorkspace?.newGitGraphSurfaceInFocusedPane(focus: true)
     }
 
+    /// Focus the existing Git Graph panel in the current workspace if one is
+    /// already open; otherwise create a new one. Wired from the titlebar
+    /// button and the ⌘G shortcut.
+    func openOrFocusGitGraph() {
+        selectedWorkspace?.clearSplitZoom()
+        selectedWorkspace?.openOrFocusGitGraphSurface()
+    }
+
     // MARK: - Split Creation
 
     /// Create a new split in the current tab

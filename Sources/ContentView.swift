@@ -2898,6 +2898,7 @@ struct ContentView: View {
                 )
             },
             onNewTab: { tabManager.addTab() },
+            onOpenGitGraph: { tabManager.openOrFocusGitGraph() },
             visibilityMode: .alwaysVisible
         )
     }
