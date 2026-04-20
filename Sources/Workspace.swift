@@ -493,6 +493,12 @@ extension Workspace {
             terminalSnapshot = nil
             browserSnapshot = nil
             markdownSnapshot = SessionMarkdownPanelSnapshot(filePath: markdownPanel.filePath)
+        case .gitGraph:
+            // Session persistence for Git Graph panels is deferred to a later task;
+            // snapshots currently store no panel-specific state. See tasks 1.2 / 3.x.
+            terminalSnapshot = nil
+            browserSnapshot = nil
+            markdownSnapshot = nil
         }
 
         return SessionPanelSnapshot(
@@ -683,6 +689,10 @@ extension Workspace {
             }
             applySessionPanelMetadata(snapshot, toPanelId: markdownPanel.id)
             return markdownPanel.id
+        case .gitGraph:
+            // Git Graph panel session restore is deferred — skip silently
+            // so the rest of the workspace still rehydrates. Tasks 1.2 / 3.x.
+            return nil
         }
     }
 
@@ -6716,6 +6726,7 @@ final class Workspace: Identifiable, ObservableObject {
         static let terminal = "terminal"
         static let browser = "browser"
         static let markdown = "markdown"
+        static let gitGraph = "gitGraph"
     }
 
     enum PanelShellActivityState: String {
@@ -7268,6 +7279,8 @@ final class Workspace: Identifiable, ObservableObject {
             return SurfaceKind.browser
         case .markdown:
             return SurfaceKind.markdown
+        case .gitGraph:
+            return SurfaceKind.gitGraph
         }
     }
 

@@ -6343,6 +6343,8 @@ struct ContentView: View {
             return String(localized: "commandPalette.kind.browser", defaultValue: "Browser")
         case .markdown:
             return String(localized: "commandPalette.kind.markdown", defaultValue: "Markdown")
+        case .gitGraph:
+            return String(localized: "commandPalette.kind.gitGraph", defaultValue: "Git Graph")
         }
     }
 
@@ -6354,6 +6356,8 @@ struct ContentView: View {
             return ["browser", "web", "page"]
         case .markdown:
             return ["markdown", "note", "preview"]
+        case .gitGraph:
+            return ["git", "graph", "history", "commits", "branches"]
         }
     }
 

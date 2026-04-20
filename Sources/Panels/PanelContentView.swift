@@ -55,6 +55,16 @@ struct PanelContentView: View {
                     onRequestPanelFocus: onRequestPanelFocus
                 )
             }
+        case .gitGraph:
+            if let gitGraphPanel = panel as? GitGraphPanel {
+                GitGraphPanelView(
+                    panel: gitGraphPanel,
+                    isFocused: isFocused,
+                    isVisibleInUI: isVisibleInUI,
+                    portalPriority: portalPriority,
+                    onRequestPanelFocus: onRequestPanelFocus
+                )
+            }
         }
     }
 }
