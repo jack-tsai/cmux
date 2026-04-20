@@ -11,6 +11,10 @@ struct GitGraphPanelView: View {
     let onRequestPanelFocus: () -> Void
 
     @State private var sidebarVisible: Bool = true
+    @State private var branchesExpanded: Bool = true
+    @State private var tagsExpanded: Bool = true
+    @State private var stashesExpanded: Bool = true
+    @State private var worktreesExpanded: Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -123,6 +127,7 @@ struct GitGraphPanelView: View {
                             defaultValue: "Branches"
                         ),
                         count: snapshot.branches.count,
+                        isExpanded: $branchesExpanded,
                         items: snapshot.branches.map { branch in
                             RefRowData(
                                 label: branch.name,
@@ -137,6 +142,7 @@ struct GitGraphPanelView: View {
                             defaultValue: "Tags"
                         ),
                         count: snapshot.tags.count,
+                        isExpanded: $tagsExpanded,
                         items: snapshot.tags.map { tag in
                             RefRowData(label: tag.name, targetSha: tag.sha, isMuted: false)
                         }
@@ -147,6 +153,7 @@ struct GitGraphPanelView: View {
                             defaultValue: "Stashes"
                         ),
                         count: snapshot.stashes.count,
+                        isExpanded: $stashesExpanded,
                         items: snapshot.stashes.map { stash in
                             RefRowData(
                                 label: "\(stash.ref) — \(stash.subject)",
@@ -161,6 +168,7 @@ struct GitGraphPanelView: View {
                             defaultValue: "Worktrees"
                         ),
                         count: snapshot.worktrees.count,
+                        isExpanded: $worktreesExpanded,
                         items: snapshot.worktrees.map { wt in
                             let label = wt.branch ?? (wt.isDetached ? "(detached)" : "(unknown)")
                             return RefRowData(
@@ -185,8 +193,13 @@ struct GitGraphPanelView: View {
     }
 
     @ViewBuilder
-    private func refsSection(title: String, count: Int, items: [RefRowData]) -> some View {
-        DisclosureGroup {
+    private func refsSection(
+        title: String,
+        count: Int,
+        isExpanded: Binding<Bool>,
+        items: [RefRowData]
+    ) -> some View {
+        DisclosureGroup(isExpanded: isExpanded) {
             if items.isEmpty {
                 Text(String(
                     localized: "gitGraph.refs.empty",
@@ -304,7 +317,6 @@ struct GitGraphPanelView: View {
                         if panel.expandedCommitSha == commit.sha {
                             commitDetailView(for: commit)
                         }
-                        Divider().opacity(0.4)
                     }
                     if panel.snapshot?.hasMoreCommits == true {
                         loadMoreButton
@@ -376,7 +388,8 @@ struct GitGraphPanelView: View {
             Canvas { context, size in
                 drawLanes(in: context, size: size, commit: commit, isHead: isHead)
             }
-            .frame(width: graphWidth, height: GitGraphLaneMetrics.rowHeight)
+            .frame(width: graphWidth)
+            .frame(minHeight: GitGraphLaneMetrics.rowHeight)
 
             if !commit.refs.isEmpty {
                 HStack(spacing: 4) {
@@ -408,8 +421,11 @@ struct GitGraphPanelView: View {
                 .foregroundColor(.secondary.opacity(0.8))
                 .frame(width: 72, alignment: .trailing)
         }
+        // No vertical padding: the HStack's intrinsic height comes from the
+        // Canvas minHeight, so lane segments in adjacent rows line up at the
+        // row boundary without a gap. A Divider between rows would reintroduce
+        // that gap, so the list uses background-only separation instead.
         .padding(.horizontal, 12)
-        .padding(.vertical, 5)
         .background(rowBackground(isExpanded: isExpanded, isMatch: isMatch))
         .contentShape(Rectangle())
         .onTapGesture { panel.toggleExpanded(commit.sha) }

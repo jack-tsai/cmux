@@ -213,12 +213,14 @@ enum GitGraphProvider {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Lists local + remote-tracking branches. `%x00` separates fields per ref;
-    /// each ref ends with a newline so we split on both.
+    /// Lists local + remote-tracking branches. A literal NUL byte (not the
+    /// git-log `%x00` placeholder — `for-each-ref` uses a different format
+    /// language that ignores it) separates fields per ref; each ref ends
+    /// with a newline so we split on both.
     static func fetchBranches(directory: String) -> [BranchRef] {
         let args = [
             "for-each-ref",
-            "--format=%(refname)%x00%(objectname)",
+            "--format=%(refname)\u{00}%(objectname)",
             "refs/heads/",
             "refs/remotes/"
         ]
@@ -246,10 +248,11 @@ enum GitGraphProvider {
     /// Lists annotated + lightweight tags. Tags can point at tag objects,
     /// so we resolve `%(*objectname)` (target commit) with fallback to
     /// `%(objectname)` for lightweight tags that directly reference a commit.
+    /// See fetchBranches() for why the separator is a literal NUL byte.
     static func fetchTags(directory: String) -> [TagRef] {
         let args = [
             "for-each-ref",
-            "--format=%(refname:short)%x00%(objectname)%x00%(*objectname)",
+            "--format=%(refname:short)\u{00}%(objectname)\u{00}%(*objectname)",
             "refs/tags/"
         ]
         guard let output = runGit(in: directory, arguments: args) else { return [] }
