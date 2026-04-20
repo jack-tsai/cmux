@@ -71,6 +71,30 @@ struct WorktreeEntry: Equatable, Hashable {
     let isLocked: Bool
 }
 
+/// One file touched by a commit with its numstat (added / deleted line counts).
+struct FileChange: Equatable, Hashable {
+    let path: String
+    /// `git show --numstat` prints `-` for binary files; these map to nil here.
+    let added: Int?
+    let deleted: Int?
+
+    var isBinary: Bool { added == nil && deleted == nil }
+}
+
+/// Full commit information loaded lazily when a commit row is expanded.
+struct CommitDetail: Equatable {
+    let sha: String
+    let parents: [String]
+    let authorName: String
+    let authorEmail: String
+    let committerName: String
+    let committerEmail: String
+    let authorDate: Date
+    let committerDate: Date
+    let fullMessage: String
+    let files: [FileChange]
+}
+
 /// Complete read-only snapshot consumed by the UI.
 struct GitGraphSnapshot: Equatable {
     let repoState: GitGraphRepoState
@@ -187,6 +211,219 @@ enum GitGraphProvider {
         // exits non-zero when HEAD is detached; `runGit` returns nil in that case.
         runGit(in: directory, arguments: ["symbolic-ref", "--short", "HEAD"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Lists local + remote-tracking branches. `%x00` separates fields per ref;
+    /// each ref ends with a newline so we split on both.
+    static func fetchBranches(directory: String) -> [BranchRef] {
+        let args = [
+            "for-each-ref",
+            "--format=%(refname)%x00%(objectname)",
+            "refs/heads/",
+            "refs/remotes/"
+        ]
+        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        var refs: [BranchRef] = []
+        output.enumerateLines { line, _ in
+            let parts = line.split(separator: "\u{00}", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else { return }
+            let full = String(parts[0])
+            let sha = String(parts[1])
+            let isRemote = full.hasPrefix("refs/remotes/")
+            let name: String
+            if isRemote {
+                name = String(full.dropFirst("refs/remotes/".count))
+                // Skip the synthetic `origin/HEAD -> origin/main` alias.
+                if name.hasSuffix("/HEAD") { return }
+            } else {
+                name = String(full.dropFirst("refs/heads/".count))
+            }
+            refs.append(BranchRef(name: name, sha: sha, isRemote: isRemote))
+        }
+        return refs
+    }
+
+    /// Lists annotated + lightweight tags. Tags can point at tag objects,
+    /// so we resolve `%(*objectname)` (target commit) with fallback to
+    /// `%(objectname)` for lightweight tags that directly reference a commit.
+    static func fetchTags(directory: String) -> [TagRef] {
+        let args = [
+            "for-each-ref",
+            "--format=%(refname:short)%x00%(objectname)%x00%(*objectname)",
+            "refs/tags/"
+        ]
+        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        var tags: [TagRef] = []
+        output.enumerateLines { line, _ in
+            let parts = line.split(separator: "\u{00}", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { return }
+            let name = String(parts[0])
+            let objSha = String(parts[1])
+            let resolvedSha = String(parts[2])
+            let commitSha = resolvedSha.isEmpty ? objSha : resolvedSha
+            tags.append(TagRef(name: name, sha: commitSha))
+        }
+        return tags
+    }
+
+    /// Lists stash entries. `%gd` is the stash selector (e.g. `stash@{0}`),
+    /// `%s` the subject, `%H` the commit SHA.
+    static func fetchStashes(directory: String) -> [StashEntry] {
+        let args = [
+            "stash",
+            "list",
+            "--format=%gd%x00%H%x00%s"
+        ]
+        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        var stashes: [StashEntry] = []
+        output.enumerateLines { line, _ in
+            let parts = line.split(separator: "\u{00}", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { return }
+            stashes.append(StashEntry(
+                ref: String(parts[0]),
+                subject: String(parts[2]),
+                sha: String(parts[1])
+            ))
+        }
+        return stashes
+    }
+
+    /// Parses `git worktree list --porcelain`. Entries are blank-line separated;
+    /// each contains `worktree <path>`, `HEAD <sha>`, one of `branch <ref>` /
+    /// `detached` / `bare`, and optionally `locked`.
+    static func fetchWorktrees(directory: String) -> [WorktreeEntry] {
+        guard let output = runGit(in: directory, arguments: ["worktree", "list", "--porcelain"]) else {
+            return []
+        }
+        var worktrees: [WorktreeEntry] = []
+        var currentPath: String?
+        var currentHead: String?
+        var currentBranch: String?
+        var currentBare = false
+        var currentDetached = false
+        var currentLocked = false
+
+        func flush() {
+            guard let path = currentPath else { return }
+            worktrees.append(WorktreeEntry(
+                path: path,
+                branch: currentBranch,
+                headSha: currentHead,
+                isBare: currentBare,
+                isDetached: currentDetached,
+                isLocked: currentLocked
+            ))
+            currentPath = nil
+            currentHead = nil
+            currentBranch = nil
+            currentBare = false
+            currentDetached = false
+            currentLocked = false
+        }
+
+        output.enumerateLines { line, _ in
+            if line.isEmpty {
+                flush()
+                return
+            }
+            if line.hasPrefix("worktree ") {
+                // New entry starts — flush the previous one if we forgot to
+                // on a missing trailing blank line.
+                if currentPath != nil { flush() }
+                currentPath = String(line.dropFirst("worktree ".count))
+            } else if line.hasPrefix("HEAD ") {
+                currentHead = String(line.dropFirst("HEAD ".count))
+            } else if line.hasPrefix("branch ") {
+                var branch = String(line.dropFirst("branch ".count))
+                if branch.hasPrefix("refs/heads/") {
+                    branch = String(branch.dropFirst("refs/heads/".count))
+                }
+                currentBranch = branch
+            } else if line == "detached" {
+                currentDetached = true
+            } else if line == "bare" {
+                currentBare = true
+            } else if line.hasPrefix("locked") {
+                currentLocked = true
+            }
+        }
+        flush()
+        return worktrees
+    }
+
+    /// Loads full commit detail including per-file numstat. Uses `%n` to
+    /// embed newlines inside the message safely because the format string
+    /// ends with a sentinel line that separates metadata from numstat.
+    static func fetchCommitDetail(directory: String, sha: String) -> CommitDetail? {
+        // Output layout:
+        //   %H\n
+        //   %P\n
+        //   %an\n
+        //   %ae\n
+        //   %cn\n
+        //   %ce\n
+        //   %at\n
+        //   %ct\n
+        //   %B                <-- full message (may span many lines)
+        //   ---CMUX-NUMSTAT---
+        //   added\tdeleted\tpath
+        //   added\tdeleted\tpath
+        //   ...
+        let separator = "---CMUX-NUMSTAT---"
+        let format = "%H%n%P%n%an%n%ae%n%cn%n%ce%n%at%n%ct%n%B%n\(separator)"
+        let args = ["show", "--numstat", "--format=\(format)", sha]
+        guard let output = runGit(in: directory, arguments: args) else { return nil }
+
+        guard let sepRange = output.range(of: "\n\(separator)\n")
+            ?? output.range(of: "\n\(separator)") else {
+            return nil
+        }
+        let metaPart = String(output[..<sepRange.lowerBound])
+        let numstatPart = String(output[sepRange.upperBound...])
+
+        let metaLines = metaPart.components(separatedBy: "\n")
+        guard metaLines.count >= 9 else { return nil }
+
+        let parents = metaLines[1]
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .map(String.init)
+        let authorName = metaLines[2]
+        let authorEmail = metaLines[3]
+        let committerName = metaLines[4]
+        let committerEmail = metaLines[5]
+        let authorTs = TimeInterval(metaLines[6]) ?? 0
+        let committerTs = TimeInterval(metaLines[7]) ?? 0
+        // Everything from index 8 onward (until the final separator) is the
+        // body of the commit message. Trim the trailing blank line `git show`
+        // injects between the body and numstat.
+        let fullMessage = metaLines.dropFirst(8)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: CharacterSet.newlines)
+
+        var files: [FileChange] = []
+        for line in numstatPart.components(separatedBy: "\n") where !line.isEmpty {
+            let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { continue }
+            let addedStr = String(parts[0])
+            let deletedStr = String(parts[1])
+            let path = String(parts[2])
+            let added = addedStr == "-" ? nil : Int(addedStr)
+            let deleted = deletedStr == "-" ? nil : Int(deletedStr)
+            files.append(FileChange(path: path, added: added, deleted: deleted))
+        }
+
+        return CommitDetail(
+            sha: metaLines[0],
+            parents: parents,
+            authorName: authorName,
+            authorEmail: authorEmail,
+            committerName: committerName,
+            committerEmail: committerEmail,
+            authorDate: Date(timeIntervalSince1970: authorTs),
+            committerDate: Date(timeIntervalSince1970: committerTs),
+            fullMessage: fullMessage,
+            files: files
+        )
     }
 
     // MARK: Parsing

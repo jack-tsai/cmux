@@ -44,6 +44,14 @@ final class GitGraphPanel: Panel, ObservableObject {
     @Published private(set) var lastRefreshAt: Date?
     @Published private(set) var loadError: String?
 
+    /// SHA of the currently expanded commit row. Nil when no row is expanded.
+    @Published var expandedCommitSha: String?
+
+    /// In-memory cache of commit-detail lookups so expanding the same row
+    /// twice (or clicking back to a previous selection) is instant.
+    @Published private(set) var commitDetailCache: [String: CommitDetail] = [:]
+    @Published private(set) var loadingDetailSha: String?
+
     /// Token incremented to trigger focus flash animation.
     @Published private(set) var focusFlashToken: Int = 0
 
@@ -102,6 +110,10 @@ final class GitGraphPanel: Panel, ObservableObject {
                 let head = GitGraphProvider.fetchHeadSha(directory: directory)
                 let branch = GitGraphProvider.fetchHeadBranch(directory: directory)
                 let uncommitted = GitGraphProvider.fetchUncommittedCount(directory: directory)
+                let branches = GitGraphProvider.fetchBranches(directory: directory)
+                let tags = GitGraphProvider.fetchTags(directory: directory)
+                let stashes = GitGraphProvider.fetchStashes(directory: directory)
+                let worktrees = GitGraphProvider.fetchWorktrees(directory: directory)
                 snapshot = GitGraphSnapshot(
                     repoState: repoState,
                     commits: commits,
@@ -109,10 +121,10 @@ final class GitGraphPanel: Panel, ObservableObject {
                     headBranch: branch,
                     isDetachedHead: branch == nil && head != nil,
                     uncommittedCount: uncommitted,
-                    branches: [],
-                    tags: [],
-                    stashes: [],
-                    worktrees: [],
+                    branches: branches,
+                    tags: tags,
+                    stashes: stashes,
+                    worktrees: worktrees,
                     hasMoreCommits: commits.count >= limit
                 )
             } else {
@@ -135,6 +147,32 @@ final class GitGraphPanel: Panel, ObservableObject {
                 self.snapshot = snapshot
                 self.isLoading = false
                 self.lastRefreshAt = Date()
+            }
+        }
+    }
+
+    /// Toggles the expanded state of a commit row; lazily fetches its detail
+    /// the first time. Respects the "at most one expanded row" rule by
+    /// closing the previous expansion when a different row is clicked.
+    func toggleExpanded(_ sha: String) {
+        if expandedCommitSha == sha {
+            expandedCommitSha = nil
+            return
+        }
+        expandedCommitSha = sha
+        guard commitDetailCache[sha] == nil else { return }
+        loadingDetailSha = sha
+        let directory = workspaceDirectory
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let detail = GitGraphProvider.fetchCommitDetail(directory: directory, sha: sha)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let detail {
+                    self.commitDetailCache[sha] = detail
+                }
+                if self.loadingDetailSha == sha {
+                    self.loadingDetailSha = nil
+                }
             }
         }
     }
