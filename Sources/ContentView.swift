@@ -2840,6 +2840,11 @@ struct ContentView: View {
                 }
             )
                 .frame(width: explorerVisible ? fileExplorerWidth : 0)
+                // Share the left sidebar's tint/material so the file explorer
+                // reads on any configured ghostty theme — without this the
+                // panel rendered over the raw window/pane background, which
+                // collapsed to near-invisible text on dark ghostty themes.
+                .background(SidebarBackdrop())
                 .clipped()
                 .allowsHitTesting(explorerVisible)
                 .accessibilityHidden(!explorerVisible)
