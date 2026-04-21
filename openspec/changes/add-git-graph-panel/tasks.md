@@ -15,7 +15,7 @@
 - [x] 1.13 開啟入口：透過 command palette 項目 `palette.newGitGraphTab`（contribution + handler 均已註冊）— 使用者 `⌘⇧P` 搜 "git graph" 即可開啟。沿用 command palette 模式取代 Bonsplit tab `+` 選單（vendor fork 成本高，palette 發現性同樣充足）
 - [x] 1.14 在 `Sources/KeyboardShortcutSettings.swift` 新增 `.openGitGraph` ShortcutAction（預設 `⌘G`，非「不綁鍵」以符合使用者明確要求）+ `AppDelegate.keyDown` 加匹配 handler 呼叫 `tabManager?.openOrFocusGitGraph()`；titlebar 的按鈕同樣顯示此 shortcut（commit 08e9a96c）。Settings UI 的編輯面板（ShortcutAction 本身在 Settings 的既有列表自動出現）
 - [x] 1.13+ 額外入口：Titlebar 右上 `+` 旁多一顆 `chart.bar.doc.horizontal` 按鈕，點擊走 `openOrFocusGitGraph`（commit 08e9a96c）；Bonsplit vendor fork 嘗試 + 還原（commit f8240485 → 3e8e4e1e 的提交過程中已清除 vendor 變更）
-- [ ] 1.15 新增 `Resources/Localizable.xcstrings` 的 `gitGraph.*` 鍵（英 / 日 / 繁中）涵蓋 Phase 1 所有 UI 文字
+- [x] 1.15 `Resources/Localizable.xcstrings` 加入 48 個 `gitGraph.*` / `titlebar.*GitGraph*` / `titlebar.fileExplorer.*` / `command.newGitGraphTab.*` / `commandPalette.kind.gitGraph` / `shortcut.openGitGraph.label` 鍵，全含英/日/繁中三組翻譯（task 12.2 合併完成）
 
 ## 2. Phase 1 — 執行緒與效能（Off-main git execution）
 
@@ -47,7 +47,7 @@
 - [x] 5.6 檔案列點擊 → `dispatchGitShow(sha:filePath:)` 以 POSIX 單引號 escape 檔名組 `git show <sha> -- '<file>'\n`，送到同 workspace 的 `focusedTerminalPanel`（fallback: 任一 TerminalPanel；都沒有就新建並延遲 0.2s 送）；路由靠 `TabManager.dispatchTextToTerminal(in:text:)` + `Workspace.dispatchTextToTerminal(text:)`（新增）
 - [x] 5.7 N/A — 目前使用扁平 file list 不是 tree，無「目錄節點」可點；若之後實作 FileTreeNode tree view 再補此行為
 - [x] 5.8 大 commit（files > 500）顯示 `tooManyFilesNotice(fileCount:sha:)`：黃色警告 icon + "Too many files (%d)" 文字 + 「Open in terminal」按鈕（走同一條 dispatchGitShow 但不帶 filePath）；避免在展開區渲染數百個 row 導致 layout 延遲
-- [ ] 5.9 補齊 Phase 2 相關的 `gitGraph.*` 在地化鍵（Localized user-facing strings）
+- [x] 5.9 Phase 2 的 commit-detail / file-list / stash-detail 相關鍵已涵蓋於 1.15 / 12.2 的 xcstrings 注入（共用同一 inject script）
 
 ## 6. Phase 3 — Refs sidebar（Refs sidebar listing branches, tags, stashes, and worktrees）
 
@@ -98,10 +98,10 @@
 
 ## 12. 本機化與收尾（Localized user-facing strings / 在地化：全數進 xcstrings）
 
-- [ ] 12.1 審視 `GitGraphPanelView` 及子視圖所有字串，確認以 `String(localized: "gitGraph.<key>", defaultValue: ...)` 宣告（Localized user-facing strings）
-- [ ] 12.2 補齊 `Resources/Localizable.xcstrings` 英 / 日 / 繁中三組翻譯（在地化：全數進 xcstrings）
-- [ ] 12.3 更新 `docs/` 新增 Git Graph panel 使用說明章節（含截圖佔位與快捷鍵說明）
-- [ ] 12.4 若新增 CLAUDE.md pitfalls（例：不可在 GitGraph row body 讀 workspace store），補充於對應段落
+- [x] 12.1 `GitGraphPanelView` 全視圖 sweep：所有字串（toolbar、sidebar section 標題、empty-state、commit detail 欄位、buttons、tooltips、error / loading 文字、banner、stash row、too-many-files notice）皆以 `String(localized: "gitGraph.<key>", defaultValue: ...)` 宣告；共 48 個獨立 key，無漏網 `Text("...")` 或 `Button { ... } label: { Text("...") }` bare literals
+- [x] 12.2 `Resources/Localizable.xcstrings` 三組翻譯：透過 `/tmp/inject_gitgraph_strings.py` 程式化注入 en / ja / zh-Hant；共 48 key × 3 lang = 144 translations；xcstrings 結構保留其他語言未設狀態（Apple 會 fall back 到 source language）
+- [x] 12.3 `docs/git-graph-panel.md` 使用說明新檔：涵蓋 3 個開啟入口 / 快捷鍵 / Refs sidebar / branch filter + HEAD-outside banner / search 兩模式 / 點檔跳 terminal / too-many-files 降級 / Settings `gitGraph.commitsPerLoad` / 3 個 refresh triggers / Non-goals / implementation notes（含 ColorSync pitfall 與 for-each-ref tab 分隔 note）
+- [x] 12.4 `CLAUDE.md` 新增 2 條 pitfall：「Never derive theme palettes as computed properties」（效能 regression 的 ColorSync 來源 + 修復 pattern 參考）、「`git for-each-ref` format language ≠ `git log` format language」（NUL crash + Tab 分隔決策）
 
 ## 13. 測試與驗證
 
