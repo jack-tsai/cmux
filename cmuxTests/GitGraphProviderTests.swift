@@ -216,6 +216,8 @@ final class GitGraphProviderTests: XCTestCase {
             authorEmail: "",
             timestamp: 0,
             subject: "",
+            subjectLower: "",
+            authorLower: "",
             refs: [],
             laneIndex: 0,
             parentLanes: [],

@@ -30,6 +30,18 @@ struct GitGraphPanelView: View {
         from: GhosttyConfig.load()
     )
 
+    /// Shared `RelativeDateTimeFormatter` — building one costs ~a few hundred
+    /// µs (reads locale, spins up a CFDateFormatter). The commit row previously
+    /// allocated a fresh formatter per visible row per body pass, which showed
+    /// up in `sample(1)` traces during scroll. A single process-wide instance
+    /// is safe because we only read it; formatters are documented thread-safe
+    /// on modern Foundation when `unitsStyle` is set once.
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -597,7 +609,16 @@ struct GitGraphPanelView: View {
 
     private var commitList: some View {
         let snapshot = panel.snapshot
-        let visibleCommits = visibleCommitsForRender(snapshot: snapshot)
+        // Precompute once per body pass instead of per commit row:
+        // - `lowerQuery` was being computed in every `commitMatchesSearch` and
+        //   every `attributedSubject` call (see sample #3, #5).
+        // - `occupancy` was being rebuilt per row even though it's constant for
+        //   the whole snapshot (sample #2).
+        let lowerQuery = panel.searchQuery.lowercased()
+        let occupancy = worktreeOccupancy()
+        let visibleCommits = visibleCommitsForRender(
+            snapshot: snapshot, lowerQuery: lowerQuery
+        )
         let isFilterActive = panel.branchFilter != nil
         let headOutsideFilter = isFilterActive
             && (snapshot?.headSha).map { head in
@@ -625,7 +646,7 @@ struct GitGraphPanelView: View {
                         }
                     }
                     ForEach(visibleCommits) { commit in
-                        commitRow(commit)
+                        commitRow(commit, occupancy: occupancy, lowerQuery: lowerQuery)
                         if panel.expandedCommitSha == commit.sha {
                             commitDetailView(for: commit)
                         }
@@ -655,14 +676,15 @@ struct GitGraphPanelView: View {
 
     /// Applies the filter-mode search filter when appropriate. Highlight mode
     /// always returns the full list (the highlighter handles visual emphasis).
-    private func visibleCommitsForRender(snapshot: GitGraphSnapshot?) -> [CommitNode] {
+    private func visibleCommitsForRender(
+        snapshot: GitGraphSnapshot?, lowerQuery: String
+    ) -> [CommitNode] {
         guard let snapshot else { return [] }
         let commits = snapshot.commits
-        guard panel.searchMode == .filter,
-              !panel.searchQuery.isEmpty else {
+        guard panel.searchMode == .filter, !lowerQuery.isEmpty else {
             return commits
         }
-        return commits.filter { commitMatchesSearch($0) }
+        return commits.filter { commitMatches($0, lowerQuery: lowerQuery) }
     }
 
     // MARK: - HEAD outside filter banner (Task 7.4)
@@ -724,11 +746,7 @@ struct GitGraphPanelView: View {
 
     private func firstMatchingSha(for query: String) -> String? {
         let lower = query.lowercased()
-        return panel.snapshot?.commits.first(where: { commit in
-            commit.subject.lowercased().contains(lower)
-                || commit.authorName.lowercased().contains(lower)
-                || commit.sha.lowercased().hasPrefix(lower)
-        })?.sha
+        return panel.snapshot?.commits.first(where: { commitMatches($0, lowerQuery: lower) })?.sha
     }
 
     // MARK: - Stash row (Task 9.2)
@@ -818,11 +836,15 @@ struct GitGraphPanelView: View {
         .background(theme.success.opacity(0.08))
     }
 
-    private func commitRow(_ commit: CommitNode) -> some View {
+    private func commitRow(
+        _ commit: CommitNode,
+        occupancy: [String: WorktreeEntry],
+        lowerQuery: String
+    ) -> some View {
         let isHead = commit.sha == panel.snapshot?.headSha
             && (panel.snapshot?.uncommittedCount ?? 0) == 0
         let isExpanded = panel.expandedCommitSha == commit.sha
-        let isMatch = !panel.searchQuery.isEmpty && commitMatchesSearch(commit)
+        let isMatch = !lowerQuery.isEmpty && commitMatches(commit, lowerQuery: lowerQuery)
         let laneCount = max(
             commit.laneIndex + 1,
             (commit.parentLanes.max() ?? 0) + 1,
@@ -830,13 +852,14 @@ struct GitGraphPanelView: View {
         )
         let graphWidth = CGFloat(laneCount) * GitGraphLaneMetrics.laneSpacing
             + GitGraphLaneMetrics.laneSpacing
-        let occupancy = worktreeOccupancy()
         return HStack(spacing: 10) {
             Canvas { context, size in
                 drawLanes(in: context, size: size, commit: commit, isHead: isHead)
             }
-            .frame(width: graphWidth)
-            .frame(minHeight: GitGraphLaneMetrics.rowHeight)
+            // Fixed frame (not minHeight) — lane rows are a constant height, so
+            // letting SwiftUI flex the size would route through FlexFrameLayout
+            // which `sample(1)` traces showed as a hot path during scroll.
+            .frame(width: graphWidth, height: GitGraphLaneMetrics.rowHeight)
 
             if !commit.refs.isEmpty {
                 HStack(spacing: 4) {
@@ -846,7 +869,7 @@ struct GitGraphPanelView: View {
                 }
             }
 
-            highlightedText(commit.subject)
+            highlightedText(commit.subject, subjectLower: commit.subjectLower, lowerQuery: lowerQuery)
                 .font(.system(size: 12))
                 .foregroundColor(theme.foreground)
                 .lineLimit(1)
@@ -892,29 +915,34 @@ struct GitGraphPanelView: View {
         }
     }
 
-    private func commitMatchesSearch(_ commit: CommitNode) -> Bool {
-        let lower = panel.searchQuery.lowercased()
-        return commit.subject.lowercased().contains(lower)
-            || commit.authorName.lowercased().contains(lower)
-            || commit.sha.lowercased().hasPrefix(lower)
+    /// Hot-path matcher used by the ForEach filter and per-row match-highlight.
+    /// Takes the already-lowercased query so the body evaluation only lowercases
+    /// once, and reads the precomputed `subjectLower` / `authorLower` on the
+    /// commit node instead of allocating a new lowercased String per row. SHA
+    /// is hex, so a direct `hasPrefix` skips a `lowercased()` entirely.
+    private func commitMatches(_ commit: CommitNode, lowerQuery: String) -> Bool {
+        commit.subjectLower.contains(lowerQuery)
+            || commit.authorLower.contains(lowerQuery)
+            || commit.sha.hasPrefix(lowerQuery)
     }
 
     /// Highlights matched substring within the commit subject when search is
     /// active. Case-insensitive search, case-preserving display.
     @ViewBuilder
-    private func highlightedText(_ text: String) -> some View {
-        let query = panel.searchQuery
-        if query.isEmpty {
+    private func highlightedText(
+        _ text: String, subjectLower: String, lowerQuery: String
+    ) -> some View {
+        if lowerQuery.isEmpty {
             Text(text)
         } else {
-            Text(attributedSubject(text, query: query))
+            Text(attributedSubject(text, lowerText: subjectLower, lowerQuery: lowerQuery))
         }
     }
 
-    private func attributedSubject(_ text: String, query: String) -> AttributedString {
-        let lowerQuery = query.lowercased()
+    private func attributedSubject(
+        _ text: String, lowerText: String, lowerQuery: String
+    ) -> AttributedString {
         guard !lowerQuery.isEmpty else { return AttributedString(text) }
-        let lowerText = text.lowercased()
         var result = AttributedString("")
         var cursor = text.startIndex
         var searchStart = lowerText.startIndex
@@ -1192,9 +1220,7 @@ struct GitGraphPanelView: View {
     }
 
     private func relativeDate(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        Self.relativeDateFormatter.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: - Graph lane drawing

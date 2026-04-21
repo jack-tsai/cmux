@@ -25,6 +25,11 @@ struct CommitNode: Equatable, Identifiable, Hashable {
     /// Unix seconds (committer / author date).
     let timestamp: TimeInterval
     let subject: String
+    /// Precomputed lowercased `subject` — avoids per-row `String.lowercased()`
+    /// allocation in `commitMatchesSearch` / `attributedSubject` during scroll.
+    let subjectLower: String
+    /// Precomputed lowercased `authorName`.
+    let authorLower: String
     let refs: [GitRef]
     /// Lane index within the rendered graph column (0-based).
     let laneIndex: Int
@@ -569,6 +574,8 @@ enum GitGraphProvider {
                 authorEmail: authorEmail,
                 timestamp: ts,
                 subject: subject,
+                subjectLower: subject.lowercased(),
+                authorLower: authorName.lowercased(),
                 refs: refs,
                 // Lane assignment is a second pass so parent positions are
                 // known when each row is placed. See assignLanes(...).
@@ -697,6 +704,8 @@ enum GitGraphProvider {
                 authorEmail: commit.authorEmail,
                 timestamp: commit.timestamp,
                 subject: commit.subject,
+                subjectLower: commit.subjectLower,
+                authorLower: commit.authorLower,
                 refs: commit.refs,
                 laneIndex: lane,
                 parentLanes: parentLanes,
