@@ -16,14 +16,19 @@ struct GitGraphPanelView: View {
     @State private var stashesExpanded: Bool = true
     @State private var worktreesExpanded: Bool = true
 
-    /// Snapshot of the workspace's current ghostty theme. Kept in view state
-    /// (rather than recomputed on every redraw) so we only parse + resolve
-    /// colors when `CmuxThemeNotifications.reloadConfig` actually fires.
-    @State private var ghosttyConfig: GhosttyConfig = GhosttyConfig.load()
-
-    /// Derived palette consumed by every subview — single source of truth
-    /// so swapping themes only touches one computed property.
-    private var theme: GitGraphTheme { GitGraphTheme.make(from: ghosttyConfig) }
+    /// Cached theme derived from the workspace ghostty config. Stored as
+    /// `@State` so SwiftUI evaluates `GitGraphTheme.make(...)` once per theme
+    /// change — previously this was a `computed property`, and
+    /// `GitGraphTheme.make` uses `NSColor.blended(withFraction:of:)` which
+    /// round-trips through ColorSync to normalize into sRGB. That's a
+    /// 50–100 µs call per access, and the view reads `theme` dozens of times
+    /// per commit row. With hundreds of rows visible in the LazyVStack, the
+    /// view graph update cycle spent >50% of main-thread time inside
+    /// ColorSync, making terminal typing + scrolling in *other* tabs feel
+    /// sluggish. Memoising here drops that to near-zero cost per redraw.
+    @State private var theme: GitGraphTheme = GitGraphTheme.make(
+        from: GhosttyConfig.load()
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,7 +58,8 @@ struct GitGraphPanelView: View {
         ) { _ in
             // The themes-reload broadcast fires after GhosttyApp invalidates
             // the config cache, so a plain `.load()` returns the fresh theme.
-            ghosttyConfig = GhosttyConfig.load(useCache: false)
+            // Recompute once here — the view then picks it up via @State.
+            theme = GitGraphTheme.make(from: GhosttyConfig.load(useCache: false))
         }
     }
 
