@@ -105,9 +105,9 @@
 
 ## 13. 測試與驗證
 
-- [ ] 13.1 `cmuxTests/` 新增 `GitGraphProviderTests` 單元測試：餵固定 stdout，斷言 parser 輸出 CommitNode / FileChange / WorktreeEntry 結構正確
-- [ ] 13.2 新增 lane 分配演算法單元測試：線性 / 分支 / 合併 / 多父 merge 各一組 fixture
-- [ ] 13.3 新增 `GitGraphPanel` 持久化單元測試：序列化 branch filter + scroll offset + workspace path，反序列化還原
+- [x] 13.1 `cmuxTests/GitGraphProviderTests.swift` 測 `parseCommits` / `parseRefNames`：linear commit、merge commit（多 parent）、malformed record skip、所有 ref 種類（HEAD / local / remote / tag）、empty；pbxproj 測試 target 已加上檔案 reference
+- [x] 13.2 Lane 演算法測試：linear history 單 lane、branch+merge 分支合併、octopus merge（三 parent）、pass-through lanes、empty input；用純 fixture 不呼叫 git
+- [x] 13.3 N/A — `GitGraphPanel` 的 snapshot/restore 在 task 1.2 已明確 defer，目前 `Workspace.createPanel(from: snapshot:)` 對 `.gitGraph` case 直接 `return nil`。等持久化實作時再補對應單元測試
 - [x] 13.4 手動驗證：Phase 1 ✓（commit f8240485 / 365f9dbc / 6bcae94a 後使用者確認 panel 可開、graph 連續、HEAD 正確、Uncommitted 顯示正常、Branches/Tags/Stashes/Worktrees sidebar 有資料）；Phase 2 ✓（點 commit 展開 detail + file list 正常）；Phase 3 search ✓、refs sidebar 跳轉 ✓；**未做**：branch filter（task 7.x）、filter mode search（8.4）、stash 展開 row（9.2/9.3）、worktree 佔用標示（10.2-10.4）、SSH（11.x）
 - [ ] 13.5 以 `./scripts/reload.sh --tag git-graph` 建 Debug app 並於 cmux 本機 + SSH workspace 各跑一次 smoke test — **改以 `scripts/local-build-dmg.sh` 做 Release 打包驗證**（fork 用途 + ad-hoc 簽章流程），SSH 部分等 task 11.x 完成後才可驗
 
