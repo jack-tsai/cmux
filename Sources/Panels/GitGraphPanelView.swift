@@ -233,6 +233,7 @@ struct GitGraphPanelView: View {
                         .foregroundColor(theme.secondary)
                 }
                 .buttonStyle(.borderless)
+                searchModeToggle
             }
         }
         .padding(.horizontal, 8)
@@ -245,6 +246,31 @@ struct GitGraphPanelView: View {
             RoundedRectangle(cornerRadius: 5)
                 .stroke(theme.divider, lineWidth: 0.5)
         )
+    }
+
+    /// Compact two-way toggle that flips between highlight (default) and
+    /// filter mode. Only visible while a search query is active — with no
+    /// query to match the toggle is meaningless.
+    private var searchModeToggle: some View {
+        let isFilter = panel.searchMode == .filter
+        return Button(action: {
+            panel.searchMode = isFilter ? .highlight : .filter
+        }) {
+            Image(systemName: isFilter ? "line.3.horizontal.decrease.circle.fill" : "highlighter")
+                .font(.system(size: 11))
+                .foregroundColor(isFilter ? theme.headMarker : theme.secondary)
+        }
+        .buttonStyle(.borderless)
+        .help(Text(isFilter
+            ? String(
+                localized: "gitGraph.search.mode.filter.tooltip",
+                defaultValue: "Filter mode — only matching rows (click to switch to highlight)"
+            )
+            : String(
+                localized: "gitGraph.search.mode.highlight.tooltip",
+                defaultValue: "Highlight mode — all rows visible (click to switch to filter)"
+            )
+        ))
     }
 
     // MARK: - Refs sidebar
@@ -279,37 +305,8 @@ struct GitGraphPanelView: View {
                             RefRowData(label: tag.name, targetSha: tag.sha, isMuted: false)
                         }
                     )
-                    refsSection(
-                        title: String(
-                            localized: "gitGraph.refs.stashes",
-                            defaultValue: "Stashes"
-                        ),
-                        count: snapshot.stashes.count,
-                        isExpanded: $stashesExpanded,
-                        items: snapshot.stashes.map { stash in
-                            RefRowData(
-                                label: "\(stash.ref) — \(stash.subject)",
-                                targetSha: stash.sha,
-                                isMuted: true
-                            )
-                        }
-                    )
-                    refsSection(
-                        title: String(
-                            localized: "gitGraph.refs.worktrees",
-                            defaultValue: "Worktrees"
-                        ),
-                        count: snapshot.worktrees.count,
-                        isExpanded: $worktreesExpanded,
-                        items: snapshot.worktrees.map { wt in
-                            let label = wt.branch ?? (wt.isDetached ? "(detached)" : "(unknown)")
-                            return RefRowData(
-                                label: "\(label) — \(wt.path.asDisplayPath)",
-                                targetSha: wt.headSha,
-                                isMuted: wt.path != panel.workspaceDirectory
-                            )
-                        }
-                    )
+                    stashesSection(snapshot: snapshot)
+                    worktreesSection(snapshot: snapshot)
                 }
             }
         }
@@ -322,6 +319,150 @@ struct GitGraphPanelView: View {
         let label: String
         let targetSha: String?
         let isMuted: Bool
+    }
+
+    // MARK: - Stash sidebar section (Task 9.2)
+
+    @ViewBuilder
+    private func stashesSection(snapshot: GitGraphSnapshot) -> some View {
+        DisclosureGroup(isExpanded: $stashesExpanded) {
+            if snapshot.stashes.isEmpty {
+                Text(String(
+                    localized: "gitGraph.refs.empty",
+                    defaultValue: "None"
+                ))
+                .font(.system(size: 11))
+                .foregroundColor(theme.faint)
+                .italic()
+                .padding(.leading, 24)
+                .padding(.vertical, 3)
+            } else {
+                ForEach(snapshot.stashes, id: \.ref) { stash in
+                    let isPinned = panel.pinnedStashRef == stash.ref
+                    Button(action: { panel.togglePinnedStash(stash.ref) }) {
+                        HStack(spacing: 4) {
+                            if isPinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(theme.refBadgeTag)
+                            }
+                            Text("\(stash.ref) — \(stash.subject)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(isPinned ? theme.foreground : theme.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 24)
+                        .padding(.trailing, 6)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } label: {
+            refsSectionLabel(
+                title: String(localized: "gitGraph.refs.stashes", defaultValue: "Stashes"),
+                count: snapshot.stashes.count
+            )
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Worktree sidebar section (Task 10.4)
+
+    @ViewBuilder
+    private func worktreesSection(snapshot: GitGraphSnapshot) -> some View {
+        DisclosureGroup(isExpanded: $worktreesExpanded) {
+            if snapshot.worktrees.isEmpty {
+                Text(String(
+                    localized: "gitGraph.refs.empty",
+                    defaultValue: "None"
+                ))
+                .font(.system(size: 11))
+                .foregroundColor(theme.faint)
+                .italic()
+                .padding(.leading, 24)
+                .padding(.vertical, 3)
+            } else {
+                ForEach(snapshot.worktrees, id: \.path) { wt in
+                    let isCurrent = wt.path == panel.workspaceDirectory
+                    let isStale = !FileManager.default.fileExists(atPath: wt.path)
+                    let branchLabel = wt.branch ?? (wt.isDetached ? "(detached)" : "(unknown)")
+                    Button(action: { scrollToSha(wt.headSha) }) {
+                        HStack(spacing: 4) {
+                            if isCurrent {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(theme.headMarker)
+                            }
+                            Text("\(branchLabel) — \(wt.path.asDisplayPath)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(
+                                    isStale
+                                    ? theme.faint
+                                    : (isCurrent ? theme.foreground : theme.secondary)
+                                )
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 24)
+                        .padding(.trailing, 6)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(Text(isStale
+                        ? String(
+                            localized: "gitGraph.refs.worktree.stale.tooltip",
+                            defaultValue: "Worktree path no longer exists on disk"
+                        )
+                        : wt.path
+                    ))
+                }
+            }
+        } label: {
+            refsSectionLabel(
+                title: String(localized: "gitGraph.refs.worktrees", defaultValue: "Worktrees"),
+                count: snapshot.worktrees.count
+            )
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func refsSectionLabel(title: String, count: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(theme.secondary)
+                .textCase(.uppercase)
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 10))
+                .foregroundColor(theme.faint)
+                .padding(.horizontal, 5)
+                .background(Capsule().fill(theme.secondary.opacity(0.12)))
+        }
+        .padding(.horizontal, 8)
+    }
+
+    // MARK: - Worktree occupancy (Task 10.2)
+
+    /// Maps `branchName -> WorktreeEntry` for branches checked out in
+    /// worktrees other than this panel's own. Used by `refBadge` to stamp
+    /// the `⎘` indicator and by tooltips to show the occupying path.
+    private func worktreeOccupancy() -> [String: WorktreeEntry] {
+        guard let worktrees = panel.snapshot?.worktrees else { return [:] }
+        var map: [String: WorktreeEntry] = [:]
+        for wt in worktrees where wt.path != panel.workspaceDirectory {
+            if let branch = wt.branch {
+                map[branch] = wt
+            }
+        }
+        return map
     }
 
     @ViewBuilder
@@ -439,19 +580,41 @@ struct GitGraphPanelView: View {
     // MARK: - Commit list
 
     private var commitList: some View {
-        ScrollViewReader { proxy in
+        let snapshot = panel.snapshot
+        let visibleCommits = visibleCommitsForRender(snapshot: snapshot)
+        let isFilterActive = panel.branchFilter != nil
+        let headOutsideFilter = isFilterActive
+            && (snapshot?.headSha).map { head in
+                !(snapshot?.commits.contains { $0.sha == head } ?? false)
+            } == true
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    if let count = panel.snapshot?.uncommittedCount, count > 0 {
+                    if headOutsideFilter, let snapshot {
+                        headOutsideFilterBanner(snapshot: snapshot)
+                    }
+                    // Task 7.4: hide Uncommitted row while a branch filter is
+                    // active — the banner above already tells the user where
+                    // HEAD (and thus the uncommitted diff) actually belongs.
+                    if !isFilterActive,
+                       let count = snapshot?.uncommittedCount,
+                       count > 0 {
                         uncommittedRow(count: count)
                     }
-                    ForEach(panel.snapshot?.commits ?? []) { commit in
+                    if let pinnedRef = panel.pinnedStashRef,
+                       let stash = snapshot?.stashes.first(where: { $0.ref == pinnedRef }) {
+                        stashRow(stash)
+                        if panel.expandedStashRef == pinnedRef {
+                            stashDetailView(stashRef: pinnedRef)
+                        }
+                    }
+                    ForEach(visibleCommits) { commit in
                         commitRow(commit)
                         if panel.expandedCommitSha == commit.sha {
                             commitDetailView(for: commit)
                         }
                     }
-                    if panel.snapshot?.hasMoreCommits == true {
+                    if snapshot?.hasMoreCommits == true {
                         loadMoreButton
                     }
                 }
@@ -474,6 +637,68 @@ struct GitGraphPanelView: View {
         }
     }
 
+    /// Applies the filter-mode search filter when appropriate. Highlight mode
+    /// always returns the full list (the highlighter handles visual emphasis).
+    private func visibleCommitsForRender(snapshot: GitGraphSnapshot?) -> [CommitNode] {
+        guard let snapshot else { return [] }
+        let commits = snapshot.commits
+        guard panel.searchMode == .filter,
+              !panel.searchQuery.isEmpty else {
+            return commits
+        }
+        return commits.filter { commitMatchesSearch($0) }
+    }
+
+    // MARK: - HEAD outside filter banner (Task 7.4)
+
+    @ViewBuilder
+    private func headOutsideFilterBanner(snapshot: GitGraphSnapshot) -> some View {
+        let branchName = snapshot.headBranch ?? "HEAD"
+        let dirtyNote = snapshot.uncommittedCount > 0
+            ? String(
+                localized: "gitGraph.banner.headOutsideFilter.dirtySuffix",
+                defaultValue: " (uncommitted changes)"
+            )
+            : ""
+        let message = String(
+            format: String(
+                localized: "gitGraph.banner.headOutsideFilter.message",
+                defaultValue: "HEAD is on %@%@, not in current filter"
+            ),
+            branchName,
+            dirtyNote
+        )
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+                .foregroundColor(theme.headMarker)
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(theme.foreground)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            Button(action: { selectBranchFilter(nil) }) {
+                Text(String(
+                    localized: "gitGraph.banner.headOutsideFilter.showAll",
+                    defaultValue: "Show All"
+                ))
+                .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .foregroundColor(theme.headMarker)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(theme.headMarker.opacity(0.12))
+        .overlay(
+            Rectangle()
+                .fill(theme.headMarker.opacity(0.35))
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
     @State private var scrollTarget: String?
 
     private func scrollToSha(_ sha: String?) {
@@ -488,6 +713,78 @@ struct GitGraphPanelView: View {
                 || commit.authorName.lowercased().contains(lower)
                 || commit.sha.lowercased().hasPrefix(lower)
         })?.sha
+    }
+
+    // MARK: - Stash row (Task 9.2)
+
+    @ViewBuilder
+    private func stashRow(_ stash: StashEntry) -> some View {
+        let isExpanded = panel.expandedStashRef == stash.ref
+        HStack(spacing: 10) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 10))
+                .foregroundColor(theme.refBadgeTag)
+            Text(stash.ref)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(theme.refBadgeText(on: theme.refBadgeTag))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(theme.refBadgeTag)
+                .cornerRadius(3)
+            Text(stash.subject)
+                .font(.system(size: 12))
+                .foregroundColor(theme.foreground)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: { panel.pinnedStashRef = nil; panel.expandedStashRef = nil }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(theme.faint)
+            }
+            .buttonStyle(.borderless)
+            .help(Text(String(
+                localized: "gitGraph.stashRow.unpin.tooltip",
+                defaultValue: "Remove stash from the list"
+            )))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(theme.refBadgeTag.opacity(0.12))
+        .contentShape(Rectangle())
+        .onTapGesture { panel.toggleExpandedStash(stash.ref) }
+    }
+
+    @ViewBuilder
+    private func stashDetailView(stashRef: String) -> some View {
+        let files = panel.stashDetailCache[stashRef]
+        let isLoading = panel.loadingStashRef == stashRef && files == nil
+        VStack(alignment: .leading, spacing: 8) {
+            if isLoading {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(String(
+                        localized: "gitGraph.detail.loading",
+                        defaultValue: "Loading commit details…"
+                    ))
+                    .font(.system(size: 11))
+                    .foregroundColor(theme.secondary)
+                }
+            } else if let files, !files.isEmpty {
+                fileListView(files, sha: stashRef)
+            } else {
+                Text(String(
+                    localized: "gitGraph.stashDetail.empty",
+                    defaultValue: "Stash contains no tracked files."
+                ))
+                .font(.system(size: 11))
+                .foregroundColor(theme.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(theme.expandedBackground)
     }
 
     private func uncommittedRow(count: Int) -> some View {
@@ -517,6 +814,7 @@ struct GitGraphPanelView: View {
         )
         let graphWidth = CGFloat(laneCount) * GitGraphLaneMetrics.laneSpacing
             + GitGraphLaneMetrics.laneSpacing
+        let occupancy = worktreeOccupancy()
         return HStack(spacing: 10) {
             Canvas { context, size in
                 drawLanes(in: context, size: size, commit: commit, isHead: isHead)
@@ -527,7 +825,7 @@ struct GitGraphPanelView: View {
             if !commit.refs.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(commit.refs, id: \.name) { ref in
-                        refBadge(ref)
+                        refBadge(ref, occupancy: occupancy)
                     }
                 }
             }
@@ -734,6 +1032,12 @@ struct GitGraphPanelView: View {
 
     // MARK: - File tree
 
+    /// Threshold above which the full file list is collapsed into a
+    /// "too many files" notice with a dispatch-to-terminal button — per
+    /// task 5.8. Rendering hundreds of expandable rows otherwise stalls
+    /// SwiftUI layout inside the expanded commit detail.
+    private static let tooManyFilesThreshold: Int = 500
+
     private func fileListView(_ files: [FileChange], sha: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -748,40 +1052,113 @@ struct GitGraphPanelView: View {
                     .foregroundColor(theme.faint)
             }
             .padding(.bottom, 2)
-            ForEach(files, id: \.path) { file in
-                HStack(spacing: 6) {
-                    Image(systemName: "doc")
-                        .font(.system(size: 10))
-                        .foregroundColor(theme.secondary)
-                    Text(file.path)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(theme.foreground)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 8)
-                    if file.isBinary {
-                        Text(String(
-                            localized: "gitGraph.detail.binary",
-                            defaultValue: "binary"
-                        ))
-                        .font(.system(size: 10))
-                        .foregroundColor(theme.faint)
-                    } else {
-                        if let added = file.added {
-                            Text("+\(added)")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(theme.success)
-                        }
-                        if let deleted = file.deleted {
-                            Text("-\(deleted)")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(theme.danger)
-                        }
-                    }
+
+            if files.count > Self.tooManyFilesThreshold {
+                tooManyFilesNotice(fileCount: files.count, sha: sha)
+            } else {
+                ForEach(files, id: \.path) { file in
+                    fileRow(file, sha: sha)
                 }
-                .padding(.vertical, 1)
             }
         }
+    }
+
+    @ViewBuilder
+    private func fileRow(_ file: FileChange, sha: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "doc")
+                .font(.system(size: 10))
+                .foregroundColor(theme.secondary)
+            Text(file.path)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(theme.foreground)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            if file.isBinary {
+                Text(String(
+                    localized: "gitGraph.detail.binary",
+                    defaultValue: "binary"
+                ))
+                .font(.system(size: 10))
+                .foregroundColor(theme.faint)
+            } else {
+                if let added = file.added {
+                    Text("+\(added)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(theme.success)
+                }
+                if let deleted = file.deleted {
+                    Text("-\(deleted)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(theme.danger)
+                }
+            }
+        }
+        .padding(.vertical, 1)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            dispatchGitShow(sha: sha, filePath: file.path)
+        }
+        .help(Text(String(
+            localized: "gitGraph.detail.fileRow.tooltip",
+            defaultValue: "Click to run git show in the workspace terminal"
+        )))
+    }
+
+    @ViewBuilder
+    private func tooManyFilesNotice(fileCount: Int, sha: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(theme.headMarker)
+                Text(String(
+                    format: String(
+                        localized: "gitGraph.detail.tooManyFiles",
+                        defaultValue: "Too many files (%d) — skipping list to keep the panel responsive."
+                    ),
+                    fileCount
+                ))
+                .font(.system(size: 11))
+                .foregroundColor(theme.secondary)
+            }
+            Button(action: { dispatchGitShow(sha: sha, filePath: nil) }) {
+                Text(String(
+                    localized: "gitGraph.detail.openInTerminal",
+                    defaultValue: "Open in terminal"
+                ))
+                .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .foregroundColor(theme.refBadgeLocal)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Dispatch to terminal (Task 5.6)
+
+    /// Sends `git show <sha> [-- <file>]\n` to a terminal panel in the same
+    /// workspace. Shell-escapes the path so spaces / quotes in file names
+    /// don't break the invocation.
+    private func dispatchGitShow(sha: String, filePath: String?) {
+        var command = "git show \(sha)"
+        if let filePath {
+            command += " -- \(shellEscape(filePath))"
+        }
+        command += "\n"
+        AppDelegate.shared?.tabManager?.dispatchTextToTerminal(
+            in: panel.workspaceId,
+            text: command
+        )
+    }
+
+    /// Wraps a path in single quotes and escapes embedded quotes the POSIX
+    /// way (`'` → `'\''`). Safe against spaces, tabs, newlines, and shell
+    /// metacharacters.
+    private func shellEscape(_ path: String) -> String {
+        let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
+        return "'\(escaped)'"
     }
 
     private func absoluteDate(_ date: Date) -> String {
@@ -874,7 +1251,7 @@ struct GitGraphPanelView: View {
         theme.lanePalette[laneIndex % theme.lanePalette.count]
     }
 
-    private func refBadge(_ ref: GitRef) -> some View {
+    private func refBadge(_ ref: GitRef, occupancy: [String: WorktreeEntry] = [:]) -> some View {
         let color: Color = {
             switch ref.kind {
             case .localBranch: return theme.refBadgeLocal
@@ -883,13 +1260,33 @@ struct GitGraphPanelView: View {
             case .head: return theme.headMarker
             }
         }()
-        return Text(ref.name)
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundColor(theme.refBadgeText(on: color))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(color)
-            .cornerRadius(3)
+        // Task 10.3: a local branch checked out in *another* worktree gets
+        // a `⎘` icon with a tooltip naming the occupying path, so the user
+        // can see they shouldn't try to check it out here.
+        let occupyingWorktree = ref.kind == .localBranch ? occupancy[ref.name] : nil
+        return HStack(spacing: 3) {
+            Text(ref.name)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(theme.refBadgeText(on: color))
+            if occupyingWorktree != nil {
+                Image(systemName: "rectangle.on.rectangle")
+                    .font(.system(size: 8))
+                    .foregroundColor(theme.refBadgeText(on: color))
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(color)
+        .cornerRadius(3)
+        .help(Text(occupyingWorktree.map { wt in
+            String(
+                format: String(
+                    localized: "gitGraph.refBadge.worktreeOccupied.tooltip",
+                    defaultValue: "Checked out in worktree: %@"
+                ),
+                wt.path
+            )
+        } ?? ref.name))
     }
 
     private var loadMoreButton: some View {

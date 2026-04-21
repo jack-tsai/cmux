@@ -12378,6 +12378,27 @@ extension Workspace: BonsplitDelegate {
         }
     }
 
+    /// Send a text buffer to a terminal panel in this workspace — preferring
+    /// the focused terminal, falling back to any terminal, and creating a
+    /// new one when none exists. The text is sent verbatim (callers are
+    /// responsible for appending `\n` and shell-escaping paths).
+    func dispatchTextToTerminal(text: String) {
+        if let focused = focusedTerminalPanel {
+            focused.sendText(text)
+            return
+        }
+        if let anyTerminal = panels.values.compactMap({ $0 as? TerminalPanel }).first {
+            anyTerminal.sendText(text)
+            return
+        }
+        // No terminal panel in the workspace — spin one up in the focused
+        // pane and dispatch after it starts accepting input.
+        guard let newPanel = newTerminalSurfaceInFocusedPane(focus: true) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak newPanel] in
+            newPanel?.sendText(text)
+        }
+    }
+
     /// Opens the existing Git Graph panel for this workspace if one already
     /// exists (there is only ever a single read-only view of the workspace's
     /// repo), focusing its tab; otherwise creates a new one in the focused

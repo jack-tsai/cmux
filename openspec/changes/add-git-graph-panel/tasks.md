@@ -44,9 +44,9 @@
 - [x] 5.3 在 `GitGraphPanelView` 實作 inline row expansion：點 row 展開同一行下方 detail 區塊，顯示 SHA / parents / author / committer / date / full message / file list（commit 83fa1e9c）
 - [x] 5.4 實作「最多一個展開 row」邏輯：`GitGraphPanel.toggleExpanded(sha:)` 用 `expandedCommitSha` 單值 state，點其他 row 自動收起、點已展開 row 收合（commit 83fa1e9c）
 - [x] 5.5 File list 節點顯示 `+N / -M`（綠/紅），binary 檔顯示 "binary" 標籤（commit 83fa1e9c）— **FileTreeNode 樹狀階層留待下次**（spec 的子節點加總功能未做）
-- [ ] 5.6 實作 file tree 點檔行為：shell-escape file path 後組出 `git show <sha> -- <file>\n`，送到同 workspace 最近聚焦的 terminal panel；若無 terminal 則新建一個 terminal panel
-- [ ] 5.7 點目錄節點只 toggle 展開/收合，不產生 terminal 指令
-- [ ] 5.8 大 commit（檔案 > 500）顯示 spinner 並於 2s timeout 後降級顯示 "Too many files (N)" + 「在 Terminal 開啟」提示
+- [x] 5.6 檔案列點擊 → `dispatchGitShow(sha:filePath:)` 以 POSIX 單引號 escape 檔名組 `git show <sha> -- '<file>'\n`，送到同 workspace 的 `focusedTerminalPanel`（fallback: 任一 TerminalPanel；都沒有就新建並延遲 0.2s 送）；路由靠 `TabManager.dispatchTextToTerminal(in:text:)` + `Workspace.dispatchTextToTerminal(text:)`（新增）
+- [x] 5.7 N/A — 目前使用扁平 file list 不是 tree，無「目錄節點」可點；若之後實作 FileTreeNode tree view 再補此行為
+- [x] 5.8 大 commit（files > 500）顯示 `tooManyFilesNotice(fileCount:sha:)`：黃色警告 icon + "Too many files (%d)" 文字 + 「Open in terminal」按鈕（走同一條 dispatchGitShow 但不帶 filePath）；避免在展開區渲染數百個 row 導致 layout 延遲
 - [ ] 5.9 補齊 Phase 2 相關的 `gitGraph.*` 在地化鍵（Localized user-facing strings）
 
 ## 6. Phase 3 — Refs sidebar（Refs sidebar listing branches, tags, stashes, and worktrees）
@@ -61,30 +61,30 @@
 - [x] 7.1 Panel toolbar 新增 branch 下拉選單（Single-branch filter），預設 "All branches"；Menu 分 Local / Remote 兩組；已選項目前方打 checkmark
 - [x] 7.2 選特定 branch 時 `panel.branchFilter = name` → `GitGraphProvider.fetchCommits(branchFilter: ...)` 已經支援：nil 走 `--all`，非 nil 走 `git log <branch>`
 - [x] 7.3 Filter 變更時呼叫 `selectBranchFilter(_:)` 清空 `scrollAnchorSha` 並 `reload()`；LazyVStack 重建時從頂端渲染
-- [ ] 7.4 實作「HEAD outside current filter」toolbar 橫幅：當 filter 開啟且 HEAD commit 不在 filter 可達集合時，顯示 `HEAD is on <branch-name>, not in current filter`（dirty 工作樹時附加 `(uncommitted changes)`）＋「Show All」按鈕；filter 下隱藏 Uncommitted Changes row
+- [x] 7.4 `headOutsideFilterBanner(snapshot:)` 顯示在 commitList 最頂：當 `branchFilter != nil` 且 `headSha` 不在目前 commits 裡時觸發；橘底警告、icon + "HEAD is on <branch>, not in current filter"（dirty tree 加 " (uncommitted changes)"）＋ `Show All` 按鈕呼叫 `selectBranchFilter(nil)`；filter 啟用時 `uncommittedRow` 也不渲染
 
 ## 8. Phase 3 — Search 高亮與篩選（Commit search with highlight / Search：前端 fuzzy + 高亮為預設，可切換篩選模式）
 
 - [x] 8.1 Toolbar 加 search input + 清除按鈕 `xmark.circle.fill`（commit 83fa1e9c）— highlight/filter mode toggle 未做，目前固定 highlight
 - [x] 8.2 實作 case-insensitive substring 比對：commit subject / author name / SHA prefix（commit 83fa1e9c）
 - [x] 8.3 Highlight mode：命中 row 套 `theme.searchMatch` 橘底高亮；命中字串用 AttributedString 精準上色（`theme.searchHighlightBg` + 自動 black/white 文字）（commit 83fa1e9c + d2255c03 theme binding）
-- [ ] 8.4 Filter mode：非 match row 不渲染；因隱藏造成 lane 斷裂改以虛線 placeholder 表示 — **暫緩**（無 mode toggle UI）
+- [x] 8.4 Search mode toggle 按鈕加入 searchField（`highlighter` / `line.3.horizontal.decrease.circle.fill` 切換），只在 query 非空時顯示；`visibleCommitsForRender(snapshot:)` 在 filter mode 過濾非命中 row；**虛線 lane placeholder 暫緩**（需要新的 lane 繪製模式，不影響主流程）
 - [x] 8.5 Search query 變化時自動 scroll 到第一筆 match（commit 83fa1e9c）
 - [x] 8.6 Search 僅作用於已載入的 snapshot，不重跑 `git log`（commit 83fa1e9c）
 
 ## 9. Phase 3 — Stash 顯示（Stash entries displayed read-only / Stash 顯示為左 sidebar list + 列內行，不混進主 commit 流）
 
 - [x] 9.1 Refs sidebar Stashes 區列 `git stash list` 結果，每 item 顯示 `stash@{N} — subject` 格式（commit 83fa1e9c）
-- [ ] 9.2 點 stash entry → 於 commit list 頂部（Uncommitted Changes 下方）新增一筆 highlighted stash row — **目前**點 stash 僅 scroll 到 stash commit，未做專屬「置頂 stash row」
-- [ ] 9.3 Stash row 可展開，透過 `git stash show --numstat <stash-ref>` 顯示 file numstat — **暫緩**，依賴 9.2
+- [x] 9.2 點 stash entry → `panel.togglePinnedStash(ref)` 將 stash ref 置頂到 commit list（Uncommitted row 下方）；以 pin 圖示 + 紫色 ref badge + `x` 關閉按鈕呈現；sidebar 內該 stash 顯示紫 pin 圖示標示 pinned 狀態
+- [x] 9.3 Stash row 點擊 → `panel.toggleExpandedStash(ref)` 展開 → 非同步 `GitGraphProvider.fetchStashDetail(directory:ref:)`（`git stash show --numstat <ref>`）回傳 FileChange 陣列 → cache 於 `stashDetailCache` → 用既有 `fileListView` 渲染 file + numstat
 - [x] 9.4 驗證 stash 不混入 `--all` 主 commit log — 預設 `git log --all` 不含 `refs/stash`，無需額外 filter（provider 未動）
 
 ## 10. Phase 3 — Worktree 佔用標示（Worktree occupancy indication / Worktree 顯示：Refs sidebar list + branch badge icon 標示）
 
 - [x] 10.1 `fetchWorktrees` 解析 `git worktree list --porcelain`，輸出 `[WorktreeEntry]`（path / branch / headSha / bare / detached / locked）（commit 83fa1e9c）
-- [ ] 10.2 計算當前 panel 所在 worktree 與其他 worktree 的 branch 佔用 map（Worktree occupancy indication）
-- [ ] 10.3 ref badge 若該 branch 被其他 worktree 佔用，附加 `⎘` icon + tooltip 顯示 path
-- [ ] 10.4 sidebar Worktrees 區標示當前 worktree（`★`），並針對 path 不存在的 worktree 顯示 stale 狀態
+- [x] 10.2 `worktreeOccupancy()` 計算 `[branchName: WorktreeEntry]`（排除當前 panel 所在 worktree）；`commitRow` 每次呼叫時重用
+- [x] 10.3 `refBadge(_:occupancy:)` 當 local branch 被其他 worktree 佔用時，內嵌 `rectangle.on.rectangle` SF Symbol + tooltip 顯示佔用 worktree 路徑
+- [x] 10.4 `worktreesSection(snapshot:)` 為當前 worktree 加金黃色 `star.fill`；透過 `FileManager.default.fileExists` 檢查 stale worktree 並以 faint 色 + 「path no longer exists」tooltip 標示
 
 ## 11. SSH 支援（Local and SSH workspace support / 本機 SSH 一致 API：`GitGraphProvider` 分 local / ssh 兩組 function，caller 根據 workspace 挑）
 

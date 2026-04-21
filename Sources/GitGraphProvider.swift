@@ -355,6 +355,25 @@ enum GitGraphProvider {
         return worktrees
     }
 
+    /// Per-file numstat for a single stash entry. Reuses the commit-detail
+    /// numstat format since `git stash show --numstat <ref>` prints the same
+    /// `added\tdeleted\tpath` triplets.
+    static func fetchStashDetail(directory: String, ref: String) -> [FileChange] {
+        guard let output = runGit(
+            in: directory,
+            arguments: ["stash", "show", "--numstat", "--format=", ref]
+        ) else { return [] }
+        var files: [FileChange] = []
+        for line in output.components(separatedBy: "\n") where !line.isEmpty {
+            let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { continue }
+            let added = parts[0] == "-" ? nil : Int(parts[0])
+            let deleted = parts[1] == "-" ? nil : Int(parts[1])
+            files.append(FileChange(path: String(parts[2]), added: added, deleted: deleted))
+        }
+        return files
+    }
+
     /// Loads full commit detail including per-file numstat. Uses `%n` to
     /// embed newlines inside the message safely because the format string
     /// ends with a sentinel line that separates metadata from numstat.

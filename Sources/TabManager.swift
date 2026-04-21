@@ -4987,6 +4987,15 @@ class TabManager: ObservableObject {
         selectedWorkspace?.openOrFocusGitGraphSurface()
     }
 
+    /// Send a text buffer to the currently focused terminal in the given
+    /// workspace, or — if no terminal panel exists — create one and dispatch
+    /// once it's live. Used by the Git Graph panel when a file row is
+    /// clicked to run `git show <sha> -- <file>`.
+    func dispatchTextToTerminal(in workspaceId: UUID, text: String) {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }) else { return }
+        workspace.dispatchTextToTerminal(text: text)
+    }
+
     // MARK: - Split Creation
 
     /// Create a new split in the current tab

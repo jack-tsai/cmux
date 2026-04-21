@@ -73,6 +73,18 @@ final class GitGraphPanel: Panel, ObservableObject {
     @Published private(set) var commitDetailCache: [String: CommitDetail] = [:]
     @Published private(set) var loadingDetailSha: String?
 
+    /// Stash currently pinned at the top of the commit list (task 9.2).
+    /// Nil means no stash selection is showing; set when the user clicks a
+    /// stash entry in the refs sidebar.
+    @Published var pinnedStashRef: String?
+
+    /// Whether the pinned stash row is expanded into its file list.
+    @Published var expandedStashRef: String?
+
+    /// Per-ref cache of stash file lists from `git stash show --numstat`.
+    @Published private(set) var stashDetailCache: [String: [FileChange]] = [:]
+    @Published private(set) var loadingStashRef: String?
+
     /// Token incremented to trigger focus flash animation.
     @Published private(set) var focusFlashToken: Int = 0
 
@@ -264,6 +276,42 @@ final class GitGraphPanel: Panel, ObservableObject {
             worktrees: [],
             hasMoreCommits: false
         )
+    }
+
+    /// Pin a stash ref to the top of the commit list. Subsequent calls with
+    /// the same ref clear the pin (toggle behaviour) to match how clicking
+    /// a commit row toggles its expansion.
+    func togglePinnedStash(_ ref: String) {
+        if pinnedStashRef == ref {
+            pinnedStashRef = nil
+            expandedStashRef = nil
+        } else {
+            pinnedStashRef = ref
+            expandedStashRef = nil
+        }
+    }
+
+    /// Toggle expansion of the currently pinned stash row, lazily fetching
+    /// its numstat when expanded for the first time.
+    func toggleExpandedStash(_ ref: String) {
+        if expandedStashRef == ref {
+            expandedStashRef = nil
+            return
+        }
+        expandedStashRef = ref
+        guard stashDetailCache[ref] == nil else { return }
+        loadingStashRef = ref
+        let directory = workspaceDirectory
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let files = GitGraphProvider.fetchStashDetail(directory: directory, ref: ref)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.stashDetailCache[ref] = files
+                if self.loadingStashRef == ref {
+                    self.loadingStashRef = nil
+                }
+            }
+        }
     }
 
     /// Toggles the expanded state of a commit row; lazily fetches its detail
