@@ -39,9 +39,12 @@ struct GitGraphPanelView: View {
         }
         .background(theme.background)
         .onAppear {
-            if panel.snapshot == nil {
-                panel.reload()
-            }
+            // Task 3.4 refresh trigger (b): panel transitioning to focused
+            // state. `refreshIfStale` is a no-op when the last successful
+            // refresh is within 30s, so returning to the tab in rapid
+            // succession costs nothing; otherwise we reload so the list
+            // picks up commits that landed while the panel was hidden.
+            panel.refreshIfStale()
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -884,20 +887,32 @@ struct GitGraphPanelView: View {
     }
 
     private var loadMoreButton: some View {
-        Button(action: { /* Load More — implemented in task 3.3 */ }) {
-            Text(String(
-                localized: "gitGraph.loadMore.button",
-                defaultValue: "Load more commits…"
-            ))
-            .font(.system(size: 12))
-            .foregroundColor(theme.foreground)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+        HStack(spacing: 8) {
+            if panel.isLoadingMore {
+                ProgressView().controlSize(.small)
+                Text(String(
+                    localized: "gitGraph.loadMore.loading",
+                    defaultValue: "Loading more commits…"
+                ))
+                .font(.system(size: 12))
+                .foregroundColor(theme.secondary)
+            } else {
+                Button(action: { panel.loadMore() }) {
+                    Text(String(
+                        localized: "gitGraph.loadMore.button",
+                        defaultValue: "Load more commits…"
+                    ))
+                    .font(.system(size: 12))
+                    .foregroundColor(theme.foreground)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .disabled(true)
     }
 }
 

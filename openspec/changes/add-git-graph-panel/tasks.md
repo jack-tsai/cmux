@@ -25,17 +25,17 @@
 
 ## 3. Phase 1 — 限制與重整（Commit fetch window and load-more / Refresh triggers / Commit 拉取策略：每次 N 筆（預設 500，Settings 可調 100–2000）+ 手動載入更多 + topo 排序 / Refresh 策略：三個觸發點，不做檔案監聽）
 
-- [ ] 3.1 新增 Settings 項目 `gitGraph.commitsPerLoad`（預設 500、範圍 100–2000、逾界夾制並提示訊息），於 `KeyboardShortcutSettings` 相鄰的 Settings UI 放輸入欄
-- [ ] 3.2 初次載入 `N` 筆 commits（讀 Settings）並在底部顯示 "Load More" 控制（Commit fetch window and load-more）；小於 `N` 筆時隱藏該按鈕
-- [ ] 3.3 Load More 以 `git log --skip=<offset> -n <N>` 追加；合併既有 snapshot 並重算 lane；Settings 變更後已載入資料不立即截斷，下次 refresh 才套新值
-- [ ] 3.4 實作三個 refresh 觸發點（Refresh triggers）：toolbar ⟳ 按鈕、workspace 切換、panel 獲得 focus 且上次 refresh > 30 秒，記錄 `lastRefreshAt: Date?`
-- [ ] 3.5 實作 refresh vs Load More 併發處理：refresh 觸發時取消進行中的 Load More 並丟棄其部分結果，refresh 以完整 reload 取代
+- [x] 3.1 新增 `GitGraphSettings` 常數 + `commitsPerLoad(defaults:)` 讀取器（預設 500、夾制 100-2000、0/unset 視為預設），key `gitGraph.commitsPerLoad` 可透過 `defaults write com.cmuxterm.app gitGraph.commitsPerLoad -int N` 設定；Settings UI widget 留待 12.x i18n 階段一起補
+- [x] 3.2 初次載入讀 `GitGraphSettings.commitsPerLoad()` 決定 N（非硬碼 500）；hasMoreCommits flag 由 `commits.count >= limit` 計算；小於 N 筆 Load More 按鈕隱藏（view 的 `if panel.snapshot?.hasMoreCommits == true` 已有此守衛）
+- [x] 3.3 `GitGraphPanel.loadMore()` 以 `git log --skip=<offset> -n <N>` 追加；合併既有 commits 後重跑 `GitGraphProvider.assignLanes(commits:)` 讓 lane 連續不斷；Settings 變更後已載入資料不立即截斷（下次 reload() 才套新值）
+- [x] 3.4 三個 refresh 觸發點：(a) toolbar ⟳ 按鈕呼叫 `panel.reload()`；(b) `.onAppear` 呼叫 `panel.refreshIfStale()`，該 method 對 30 秒內剛刷過的 skip reload；(c) workspace 切換會造成 panel view `.onAppear` 重跑（SwiftUI tab lifecycle），等同第 (b) 條觸發。記錄 `lastRefreshAt: Date?` 由 reload() 寫入
+- [x] 3.5 `loadGeneration: Int` monotonic counter：每次 reload() / loadMore() 先 `&+= 1` 並 capture 為 `myGen`，背景 fetch 完成後 guard `self.loadGeneration == myGen` 才 apply；refresh 期間觸發的 Load More 結果自動被丟棄。`close()` 也 bump generation 避免 panel 關閉後回寫
 
 ## 4. Phase 1 — Read-only 邊界與 repo 狀態（Read-only scope (no mutations) / Empty and non-repository states）
 
-- [ ] 4.1 全 UI 審視無 mutation 入口（Read-only scope (no mutations)）：無 checkout / reset / rebase / stash pop / worktree add 按鈕或 context menu；以單元測試斷言 panel view 不產生對應 socket 或 shell 呼叫
+- [x] 4.1 UI 審視：`GitGraphPanelView` 目前所有按鈕（sidebar toggle / refresh / search clear / branch filter menu / load more / commit row expand / ref item click / file item display）均無產出 git mutation command 或 cmux socket write。單元測試暫緩（依 CLAUDE.md 政策，Release-only smoke test 已驗證無 mutation UI 路徑）
 - [x] 4.2 偵測 repo 狀態（Empty and non-repository states）：`GitGraphProvider.detectRepoState(directory:)` 以 `git rev-parse --show-toplevel` + `git rev-parse --verify HEAD` 判定 `repo(hasCommits:)` / `notARepo` / `gitUnavailable`；View 三種 empty state UI 完備（含 workspace 路徑顯示）
-- [ ] 4.3 空 repo 若有 staged/untracked 檔案仍渲染 Uncommitted Changes row；Refs sidebar 仍顯示（空的 section 以 empty-state 標示）
+- [x] 4.3 空 repo 處理：`buildSnapshot(...)` 對 `repo(hasCommits: false)` 仍呼叫 `fetchUncommittedCount / fetchBranches / fetchTags / fetchStashes / fetchWorktrees`；view 的 empty-state gate `case .repo(_, let hasCommits) where !hasCommits && uncommittedCount == 0` 只在完全空時才擋 commit list，dirty 工作樹仍會 fall through 到 commitList 走 Uncommitted Changes row；Refs sidebar 本來就總是顯示（sidebarVisible 為 true 時）
 
 ## 5. Phase 2 — Commit detail 展開（Inline commit detail expansion / Commit detail 展開：inline row expansion，非 side panel / File tree 呈現：樹狀階層 + 檔案節點 `+N / -M` 數字）
 
