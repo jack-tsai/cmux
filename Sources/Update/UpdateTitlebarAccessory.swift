@@ -257,6 +257,7 @@ struct TitlebarControlsView: View {
     let onToggleNotifications: () -> Void
     let onNewTab: () -> Void
     let onOpenGitGraph: () -> Void
+    let onToggleFileExplorer: () -> Void
     let visibilityMode: TitlebarControlsVisibilityMode
     @AppStorage("titlebarControlsStyle") private var styleRawValue = TitlebarControlsStyle.classic.rawValue
     @AppStorage(ShortcutHintDebugSettings.titlebarHintXKey) private var titlebarShortcutHintXOffset = ShortcutHintDebugSettings.defaultTitlebarHintX
@@ -274,6 +275,7 @@ struct TitlebarControlsView: View {
         case showNotifications
         case newTab
         case openGitGraph
+        case toggleFileExplorer
 
         var action: KeyboardShortcutSettings.Action {
             switch self {
@@ -285,6 +287,8 @@ struct TitlebarControlsView: View {
                 return .newTab
             case .openGitGraph:
                 return .openGitGraph
+            case .toggleFileExplorer:
+                return .toggleFileExplorer
             }
         }
     }
@@ -423,6 +427,18 @@ struct TitlebarControlsView: View {
             .accessibilityIdentifier("titlebarControl.openGitGraph")
             .accessibilityLabel(String(localized: "titlebar.openGitGraph.accessibilityLabel", defaultValue: "Open Git Graph"))
             .safeHelp(KeyboardShortcutSettings.Action.openGitGraph.tooltip(String(localized: "titlebar.openGitGraph.tooltip", defaultValue: "Open Git Graph for this workspace")))
+
+            TitlebarControlButton(config: config, action: {
+                #if DEBUG
+                dlog("titlebar.toggleFileExplorer")
+                #endif
+                onToggleFileExplorer()
+            }) {
+                iconLabel(systemName: "sidebar.right", config: config)
+            }
+            .accessibilityIdentifier("titlebarControl.toggleFileExplorer")
+            .accessibilityLabel(String(localized: "titlebar.fileExplorer.accessibilityLabel", defaultValue: "Toggle File Explorer"))
+            .safeHelp(KeyboardShortcutSettings.Action.toggleFileExplorer.tooltip(String(localized: "titlebar.fileExplorer.tooltip", defaultValue: "Show or hide the file explorer / sessions panel")))
 
         }
 
@@ -576,6 +592,7 @@ struct HiddenTitlebarSidebarControlsView: View {
             },
             onNewTab: { _ = AppDelegate.shared?.tabManager?.addTab() },
             onOpenGitGraph: { _ = AppDelegate.shared?.tabManager?.openOrFocusGitGraph() },
+            onToggleFileExplorer: { _ = AppDelegate.shared?.fileExplorerState?.toggle() },
             visibilityMode: .onHover
         )
         .frame(width: hostWidth, height: hostHeight, alignment: .leading)
@@ -810,6 +827,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         let toggleNotifications: () -> Void = { _ = AppDelegate.shared?.toggleNotificationsPopover(animated: true) }
         let newTab = { _ = AppDelegate.shared?.tabManager?.addTab() }
         let openGitGraph = { _ = AppDelegate.shared?.tabManager?.openOrFocusGitGraph() }
+        let toggleFileExplorer = { _ = AppDelegate.shared?.fileExplorerState?.toggle() }
         hostingView = NonDraggableHostingView(
             rootView: TitlebarControlsView(
                 notificationStore: notificationStore,
@@ -818,6 +836,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
                 onToggleNotifications: toggleNotifications,
                 onNewTab: newTab,
                 onOpenGitGraph: openGitGraph,
+                onToggleFileExplorer: toggleFileExplorer,
                 visibilityMode: .alwaysVisible
             )
         )

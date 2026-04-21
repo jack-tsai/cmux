@@ -2904,6 +2904,7 @@ struct ContentView: View {
             },
             onNewTab: { tabManager.addTab() },
             onOpenGitGraph: { tabManager.openOrFocusGitGraph() },
+            onToggleFileExplorer: { fileExplorerState.toggle() },
             visibilityMode: .alwaysVisible
         )
     }
