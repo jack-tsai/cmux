@@ -10242,7 +10242,8 @@ final class Workspace: Identifiable, ObservableObject {
 
         let gitGraphPanel = GitGraphPanel(
             workspaceId: id,
-            workspaceDirectory: currentDirectory
+            workspaceDirectory: currentDirectory,
+            remoteConfig: remoteConfiguration
         )
         panels[gitGraphPanel.id] = gitGraphPanel
         panelTitles[gitGraphPanel.id] = gitGraphPanel.displayTitle

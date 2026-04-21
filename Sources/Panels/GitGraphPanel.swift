@@ -39,6 +39,11 @@ final class GitGraphPanel: Panel, ObservableObject {
     /// Absolute directory that anchors the graph (workspace root or git worktree).
     let workspaceDirectory: String
 
+    /// SSH configuration inherited from the workspace. Nil when the workspace
+    /// is local; set when cmux was launched via `cmux ssh user@host` and all
+    /// git subprocesses must run on the remote host.
+    let remoteConfig: WorkspaceRemoteConfiguration?
+
     @Published private(set) var displayTitle: String
     var displayIcon: String? { "chart.bar.doc.horizontal" }
 
@@ -103,10 +108,15 @@ final class GitGraphPanel: Panel, ObservableObject {
 
     // MARK: - Init
 
-    init(workspaceId: UUID, workspaceDirectory: String) {
+    init(
+        workspaceId: UUID,
+        workspaceDirectory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) {
         self.id = UUID()
         self.workspaceId = workspaceId
         self.workspaceDirectory = workspaceDirectory
+        self.remoteConfig = remoteConfig
         self.displayTitle = "Git Graph"
     }
 
@@ -144,12 +154,14 @@ final class GitGraphPanel: Panel, ObservableObject {
         loadError = nil
         let directory = workspaceDirectory
         let filter = branchFilter
+        let remote = remoteConfig
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let snapshot = Self.buildSnapshot(
                 directory: directory,
                 limit: batchSize,
-                branchFilter: filter
+                branchFilter: filter,
+                remoteConfig: remote
             )
             DispatchQueue.main.async {
                 guard let self, self.loadGeneration == myGen else { return }
@@ -186,13 +198,15 @@ final class GitGraphPanel: Panel, ObservableObject {
         isLoadingMore = true
         let directory = workspaceDirectory
         let filter = branchFilter
+        let remote = remoteConfig
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let moreCommits = GitGraphProvider.fetchCommits(
                 directory: directory,
                 limit: batchSize,
                 skip: skip,
-                branchFilter: filter
+                branchFilter: filter,
+                remoteConfig: remote
             )
             DispatchQueue.main.async {
                 guard let self, self.loadGeneration == myGen else { return }
@@ -231,24 +245,29 @@ final class GitGraphPanel: Panel, ObservableObject {
     private static func buildSnapshot(
         directory: String,
         limit: Int,
-        branchFilter: String?
+        branchFilter: String?,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
     ) -> GitGraphSnapshot {
-        let repoState = GitGraphProvider.detectRepoState(directory: directory)
+        let repoState = GitGraphProvider.detectRepoState(
+            directory: directory,
+            remoteConfig: remoteConfig
+        )
         if case .repo(_, let hasCommits) = repoState {
             let commits = hasCommits
                 ? GitGraphProvider.fetchCommits(
                     directory: directory,
                     limit: limit,
-                    branchFilter: branchFilter
+                    branchFilter: branchFilter,
+                    remoteConfig: remoteConfig
                 )
                 : []
-            let head = GitGraphProvider.fetchHeadSha(directory: directory)
-            let branch = GitGraphProvider.fetchHeadBranch(directory: directory)
-            let uncommitted = GitGraphProvider.fetchUncommittedCount(directory: directory)
-            let branches = GitGraphProvider.fetchBranches(directory: directory)
-            let tags = GitGraphProvider.fetchTags(directory: directory)
-            let stashes = GitGraphProvider.fetchStashes(directory: directory)
-            let worktrees = GitGraphProvider.fetchWorktrees(directory: directory)
+            let head = GitGraphProvider.fetchHeadSha(directory: directory, remoteConfig: remoteConfig)
+            let branch = GitGraphProvider.fetchHeadBranch(directory: directory, remoteConfig: remoteConfig)
+            let uncommitted = GitGraphProvider.fetchUncommittedCount(directory: directory, remoteConfig: remoteConfig)
+            let branches = GitGraphProvider.fetchBranches(directory: directory, remoteConfig: remoteConfig)
+            let tags = GitGraphProvider.fetchTags(directory: directory, remoteConfig: remoteConfig)
+            let stashes = GitGraphProvider.fetchStashes(directory: directory, remoteConfig: remoteConfig)
+            let worktrees = GitGraphProvider.fetchWorktrees(directory: directory, remoteConfig: remoteConfig)
             return GitGraphSnapshot(
                 repoState: repoState,
                 commits: commits,
@@ -302,8 +321,13 @@ final class GitGraphPanel: Panel, ObservableObject {
         guard stashDetailCache[ref] == nil else { return }
         loadingStashRef = ref
         let directory = workspaceDirectory
+        let remote = remoteConfig
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let files = GitGraphProvider.fetchStashDetail(directory: directory, ref: ref)
+            let files = GitGraphProvider.fetchStashDetail(
+                directory: directory,
+                ref: ref,
+                remoteConfig: remote
+            )
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.stashDetailCache[ref] = files
@@ -326,8 +350,13 @@ final class GitGraphPanel: Panel, ObservableObject {
         guard commitDetailCache[sha] == nil else { return }
         loadingDetailSha = sha
         let directory = workspaceDirectory
+        let remote = remoteConfig
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let detail = GitGraphProvider.fetchCommitDetail(directory: directory, sha: sha)
+            let detail = GitGraphProvider.fetchCommitDetail(
+                directory: directory,
+                sha: sha,
+                remoteConfig: remote
+            )
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let detail {

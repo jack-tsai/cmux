@@ -140,22 +140,42 @@ enum GitGraphProvider {
     // MARK: Public API
 
     /// Detects whether `directory` is inside a git repo and returns its toplevel.
-    static func detectRepoState(directory: String) -> GitGraphRepoState {
-        // `git rev-parse --show-toplevel` returns the worktree root on stdout,
-        // or fails if `directory` is not inside a repo. Presence of the `git`
-        // executable itself is checked first so remote/missing-tool paths can
-        // be distinguished from "not a repo".
-        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/git") else {
+    static func detectRepoState(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> GitGraphRepoState {
+        // For local execution, sanity-check `/usr/bin/git` exists first so
+        // we can tell the user "git isn't on this Mac" up front.
+        if remoteConfig == nil,
+           !FileManager.default.isExecutableFile(atPath: "/usr/bin/git") {
             return .gitUnavailable
         }
-        guard let top = runGit(in: directory, arguments: ["rev-parse", "--show-toplevel"])?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
+        // For SSH, `git --version` tells us whether the remote host has git.
+        // Doing this before `rev-parse` means we can show a useful "git not
+        // found on <host>" message instead of an ambiguous empty snapshot.
+        if remoteConfig != nil,
+           runGitAnywhere(
+               directory: directory,
+               arguments: ["--version"],
+               remoteConfig: remoteConfig
+           ) == nil {
+            return .gitUnavailable
+        }
+        guard let top = runGitAnywhere(
+            directory: directory,
+            arguments: ["rev-parse", "--show-toplevel"],
+            remoteConfig: remoteConfig
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
               !top.isEmpty
         else {
             return .notARepo
         }
         // `rev-parse HEAD` fails on a freshly-initialized repo with no commits.
-        let hasCommits = runGit(in: directory, arguments: ["rev-parse", "--verify", "HEAD"]) != nil
+        let hasCommits = runGitAnywhere(
+            directory: directory,
+            arguments: ["rev-parse", "--verify", "HEAD"],
+            remoteConfig: remoteConfig
+        ) != nil
         return .repo(toplevel: top, hasCommits: hasCommits)
     }
 
@@ -166,7 +186,8 @@ enum GitGraphProvider {
         directory: String,
         limit: Int,
         skip: Int = 0,
-        branchFilter: String? = nil
+        branchFilter: String? = nil,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
     ) -> [CommitNode] {
         var args = ["log", "--topo-order"]
         args.append(contentsOf: ["-n", String(limit)])
@@ -181,14 +202,25 @@ enum GitGraphProvider {
         } else {
             args.append("--all")
         }
-        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: args,
+            remoteConfig: remoteConfig
+        ) else { return [] }
         return parseCommits(output: output)
     }
 
     /// Counts uncommitted paths via `git status --porcelain`.
     /// A path is counted if its two status chars indicate any change.
-    static func fetchUncommittedCount(directory: String) -> Int {
-        guard let output = runGit(in: directory, arguments: ["status", "--porcelain"]) else {
+    static func fetchUncommittedCount(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> Int {
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: ["status", "--porcelain"],
+            remoteConfig: remoteConfig
+        ) else {
             return 0
         }
         var count = 0
@@ -200,17 +232,29 @@ enum GitGraphProvider {
     }
 
     /// Resolves `HEAD` to a commit SHA, or nil if detached with no commits / not a repo.
-    static func fetchHeadSha(directory: String) -> String? {
-        runGit(in: directory, arguments: ["rev-parse", "HEAD"])?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    static func fetchHeadSha(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> String? {
+        runGitAnywhere(
+            directory: directory,
+            arguments: ["rev-parse", "HEAD"],
+            remoteConfig: remoteConfig
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Returns the local branch name HEAD points to, or nil when detached.
-    static func fetchHeadBranch(directory: String) -> String? {
+    static func fetchHeadBranch(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> String? {
         // `symbolic-ref --short HEAD` prints `main` when on a branch and
         // exits non-zero when HEAD is detached; `runGit` returns nil in that case.
-        runGit(in: directory, arguments: ["symbolic-ref", "--short", "HEAD"])?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        runGitAnywhere(
+            directory: directory,
+            arguments: ["symbolic-ref", "--short", "HEAD"],
+            remoteConfig: remoteConfig
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Lists local + remote-tracking branches. Tab separates fields per ref
@@ -218,14 +262,21 @@ enum GitGraphProvider {
     /// passing a literal NUL byte as a process argument aborts Foundation's
     /// argv conversion — so `\t` is the safest inert separator that cannot
     /// appear in ref names or SHAs); each ref ends with a newline.
-    static func fetchBranches(directory: String) -> [BranchRef] {
+    static func fetchBranches(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> [BranchRef] {
         let args = [
             "for-each-ref",
             "--format=%(refname)\t%(objectname)",
             "refs/heads/",
             "refs/remotes/"
         ]
-        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: args,
+            remoteConfig: remoteConfig
+        ) else { return [] }
         var refs: [BranchRef] = []
         output.enumerateLines { line, _ in
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
@@ -250,13 +301,20 @@ enum GitGraphProvider {
     /// so we resolve `%(*objectname)` (target commit) with fallback to
     /// `%(objectname)` for lightweight tags that directly reference a commit.
     /// See fetchBranches() for why the separator is Tab.
-    static func fetchTags(directory: String) -> [TagRef] {
+    static func fetchTags(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> [TagRef] {
         let args = [
             "for-each-ref",
             "--format=%(refname:short)\t%(objectname)\t%(*objectname)",
             "refs/tags/"
         ]
-        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: args,
+            remoteConfig: remoteConfig
+        ) else { return [] }
         var tags: [TagRef] = []
         output.enumerateLines { line, _ in
             let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
@@ -272,13 +330,20 @@ enum GitGraphProvider {
 
     /// Lists stash entries. `%gd` is the stash selector (e.g. `stash@{0}`),
     /// `%s` the subject, `%H` the commit SHA.
-    static func fetchStashes(directory: String) -> [StashEntry] {
+    static func fetchStashes(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> [StashEntry] {
         let args = [
             "stash",
             "list",
             "--format=%gd%x00%H%x00%s"
         ]
-        guard let output = runGit(in: directory, arguments: args) else { return [] }
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: args,
+            remoteConfig: remoteConfig
+        ) else { return [] }
         var stashes: [StashEntry] = []
         output.enumerateLines { line, _ in
             let parts = line.split(separator: "\u{00}", maxSplits: 2, omittingEmptySubsequences: false)
@@ -295,8 +360,15 @@ enum GitGraphProvider {
     /// Parses `git worktree list --porcelain`. Entries are blank-line separated;
     /// each contains `worktree <path>`, `HEAD <sha>`, one of `branch <ref>` /
     /// `detached` / `bare`, and optionally `locked`.
-    static func fetchWorktrees(directory: String) -> [WorktreeEntry] {
-        guard let output = runGit(in: directory, arguments: ["worktree", "list", "--porcelain"]) else {
+    static func fetchWorktrees(
+        directory: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> [WorktreeEntry] {
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: ["worktree", "list", "--porcelain"],
+            remoteConfig: remoteConfig
+        ) else {
             return []
         }
         var worktrees: [WorktreeEntry] = []
@@ -358,10 +430,15 @@ enum GitGraphProvider {
     /// Per-file numstat for a single stash entry. Reuses the commit-detail
     /// numstat format since `git stash show --numstat <ref>` prints the same
     /// `added\tdeleted\tpath` triplets.
-    static func fetchStashDetail(directory: String, ref: String) -> [FileChange] {
-        guard let output = runGit(
-            in: directory,
-            arguments: ["stash", "show", "--numstat", "--format=", ref]
+    static func fetchStashDetail(
+        directory: String,
+        ref: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> [FileChange] {
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: ["stash", "show", "--numstat", "--format=", ref],
+            remoteConfig: remoteConfig
         ) else { return [] }
         var files: [FileChange] = []
         for line in output.components(separatedBy: "\n") where !line.isEmpty {
@@ -377,7 +454,11 @@ enum GitGraphProvider {
     /// Loads full commit detail including per-file numstat. Uses `%n` to
     /// embed newlines inside the message safely because the format string
     /// ends with a sentinel line that separates metadata from numstat.
-    static func fetchCommitDetail(directory: String, sha: String) -> CommitDetail? {
+    static func fetchCommitDetail(
+        directory: String,
+        sha: String,
+        remoteConfig: WorkspaceRemoteConfiguration? = nil
+    ) -> CommitDetail? {
         // Output layout:
         //   %H\n
         //   %P\n
@@ -395,7 +476,11 @@ enum GitGraphProvider {
         let separator = "---CMUX-NUMSTAT---"
         let format = "%H%n%P%n%an%n%ae%n%cn%n%ce%n%at%n%ct%n%B%n\(separator)"
         let args = ["show", "--numstat", "--format=\(format)", sha]
-        guard let output = runGit(in: directory, arguments: args) else { return nil }
+        guard let output = runGitAnywhere(
+            directory: directory,
+            arguments: args,
+            remoteConfig: remoteConfig
+        ) else { return nil }
 
         guard let sepRange = output.range(of: "\n\(separator)\n")
             ?? output.range(of: "\n\(separator)") else {
@@ -643,5 +728,89 @@ enum GitGraphProvider {
         } catch {
             return nil
         }
+    }
+
+    // MARK: - SSH dispatcher (Task 11.1 / 11.2)
+
+    /// Transparent local/remote router — lets every `fetch…` function carry
+    /// a single `remoteConfig:` parameter instead of branching at every
+    /// caller. `nil` runs `/usr/bin/git` locally; otherwise `git` is invoked
+    /// on the remote host via `ssh` with the saved destination / port /
+    /// identity-file / options from the workspace's remote configuration.
+    private static func runGitAnywhere(
+        directory: String,
+        arguments: [String],
+        remoteConfig: WorkspaceRemoteConfiguration?
+    ) -> String? {
+        if let remoteConfig {
+            return runGitSSH(
+                directory: directory,
+                arguments: arguments,
+                remoteConfig: remoteConfig
+            )
+        }
+        return runGit(in: directory, arguments: arguments)
+    }
+
+    /// Runs `git <args>` on the SSH destination. We wrap the command in a
+    /// `sh -c 'cd <dir> && exec git ...'` so the remote host resolves
+    /// git via its own PATH — useful for non-/usr/bin/git installs and for
+    /// detecting absence via non-zero exit (see `detectRepoState`).
+    private static func runGitSSH(
+        directory: String,
+        arguments: [String],
+        remoteConfig: WorkspaceRemoteConfiguration
+    ) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        var sshArgs: [String] = []
+        if let port = remoteConfig.port {
+            sshArgs += ["-p", String(port)]
+        }
+        if let identity = remoteConfig.identityFile {
+            sshArgs += ["-i", identity]
+        }
+        for option in remoteConfig.sshOptions {
+            sshArgs += ["-o", option]
+        }
+        sshArgs += [
+            "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=5",
+            "-T",
+            remoteConfig.destination,
+            // Shell-escape the directory so paths with spaces survive; the
+            // rest of the args are forwarded as additional positionals so
+            // the remote shell tokenises them as a single `git` invocation.
+            "sh",
+            "-lc",
+            shellCommand(directory: directory, gitArguments: arguments)
+        ]
+        process.arguments = sshArgs
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            return String(data: data, encoding: .utf8)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Builds the remote-side shell command: `cd '<dir>' && exec git <args>`.
+    /// Every argument gets POSIX-single-quote escaping (`'` -> `'\''`) so
+    /// values with embedded separators (tab, NUL, spaces) survive the remote
+    /// shell parsing round-trip intact.
+    private static func shellCommand(directory: String, gitArguments: [String]) -> String {
+        let dir = posixEscape(directory)
+        let args = gitArguments.map(posixEscape).joined(separator: " ")
+        return "cd \(dir) && exec git \(args)"
+    }
+
+    private static func posixEscape(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }

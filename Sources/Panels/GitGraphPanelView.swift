@@ -532,12 +532,28 @@ struct GitGraphPanelView: View {
                 subtitle: panel.workspaceDirectory
             )
         case .gitUnavailable:
+            // When a remote workspace reports no git, include the SSH
+            // destination in the title so the user knows where they need
+            // to install git (task 11.3).
             emptyState(
-                title: String(
+                title: panel.remoteConfig.map { remote in
+                    String(
+                        format: String(
+                            localized: "gitGraph.state.gitUnavailable.remoteTitle",
+                            defaultValue: "git not found on %@"
+                        ),
+                        remote.destination
+                    )
+                } ?? String(
                     localized: "gitGraph.state.gitUnavailable.title",
                     defaultValue: "git is not available"
                 ),
-                subtitle: panel.workspaceDirectory
+                subtitle: panel.remoteConfig.map { _ in
+                    String(
+                        localized: "gitGraph.state.gitUnavailable.remoteSubtitle",
+                        defaultValue: "Install git on the remote host, then press refresh."
+                    )
+                } ?? panel.workspaceDirectory
             )
         case .repo(_, let hasCommits) where !hasCommits && (panel.snapshot?.uncommittedCount ?? 0) == 0:
             emptyState(

@@ -91283,6 +91283,52 @@
           }
         }
       }
+    },
+    "gitGraph.state.gitUnavailable.remoteTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "git not found on %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ に git が見つかりません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上找不到 git"
+          }
+        }
+      }
+    },
+    "gitGraph.state.gitUnavailable.remoteSubtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install git on the remote host, then press refresh."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リモートホストに git をインストールしてから更新してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在遠端主機安裝 git 後按重新整理。"
+          }
+        }
+      }
     }
   }
 }

@@ -88,13 +88,13 @@
 
 ## 11. SSH 支援（Local and SSH workspace support / 本機 SSH 一致 API：`GitGraphProvider` 分 local / ssh 兩組 function，caller 根據 workspace 挑）
 
-- [ ] 11.1 為 `GitGraphProvider` 每個 fetch function 新增 `*SSH(...)` 版本（Local and SSH workspace support / 本機 SSH 一致 API：`GitGraphProvider` 分 local / ssh 兩組 function，caller 根據 workspace 挑），透過現有 SSH runner 執行 `cd '<dir>' && git ...` 並以 NUL + RS 分段 stdout
-- [ ] 11.2 `GitGraphPanel` view model 依 workspace 類型（local vs SSH）挑選對應 function（caller 根據 workspace 挑）
-- [ ] 11.3 若 SSH 遠端無 `git`，顯示在地化錯誤 `git not found on <host>` 並彈出安裝對話框（遠端 git 缺失時的裝 git 流程）；使用者按 refresh 重新探測遠端 git 可用性
-- [ ] 11.4 實作遠端 OS 探測：`uname -s` + `command -v apt-get dnf apk brew`，分類為 debian/ubuntu、rhel/fedora、alpine、macos；未分類走 unknown OS 路徑
-- [ ] 11.5 實作安裝 flow：檢查 passwordless sudo（非 macOS brew 情境），執行對應套件管理器指令；stdout 以 streaming 顯示於對話框 log 區
-- [ ] 11.6 安裝失敗或缺 sudo 時 fallback 顯示 stderr tail（末 10 行）＋ 手動指令提示；對話框標題明示 `<host>` + 修改遠端系統警語，確認需二次點擊
-- [ ] 11.7 安裝成功自動 refresh；對話框不支援的 OS、取消、失敗皆維持錯誤狀態
+- [x] 11.1 `GitGraphProvider` 的**每個** fetch function 新增 `remoteConfig: WorkspaceRemoteConfiguration? = nil` 參數；所有 git 執行統一走 `runGitAnywhere(directory:arguments:remoteConfig:)` dispatcher → 本地走 `runGit`、遠端走 `runGitSSH`；`runGitSSH` 用 `/usr/bin/ssh -p <port> -i <identity> -o <options> -o BatchMode=yes -o ConnectTimeout=5 -T <dest> sh -lc '<posix-escaped cd && exec git>'`；POSIX 單引號 escape 保護路徑內特殊字元
+- [x] 11.2 `GitGraphPanel` 新增 `remoteConfig: WorkspaceRemoteConfiguration?`（init 參數）；`Workspace.newGitGraphSurface` 直接從 `remoteConfiguration` 傳入；`reload()` / `loadMore()` / `toggleExpanded(sha)` / `toggleExpandedStash(ref)` / `buildSnapshot()` 全把 remoteConfig 透傳給 provider
+- [x] 11.3 `detectRepoState` 對 SSH 先跑 `git --version` 探測；不存在時回傳 `.gitUnavailable`；view 的 empty state 此時顯示 `git not found on <destination>`（從 `panel.remoteConfig?.destination`）＋「Install git on the remote host, then press refresh.」副標；新增兩個 xcstrings key（en/ja/zh-Hant）
+- [ ] 11.4 實作遠端 OS 探測：`uname -s` + `command -v apt-get dnf apk brew`，分類為 debian/ubuntu、rhel/fedora、alpine、macos；未分類走 unknown OS 路徑 — **暫緩**：與 11.5-11.7 綁定
+- [ ] 11.5 實作安裝 flow：檢查 passwordless sudo（非 macOS brew 情境），執行對應套件管理器指令；stdout 以 streaming 顯示於對話框 log 區 — **暫緩**
+- [ ] 11.6 安裝失敗或缺 sudo 時 fallback 顯示 stderr tail（末 10 行）＋ 手動指令提示；對話框標題明示 `<host>` + 修改遠端系統警語，確認需二次點擊 — **暫緩**
+- [ ] 11.7 安裝成功自動 refresh；對話框不支援的 OS、取消、失敗皆維持錯誤狀態 — **暫緩**；11.4-11.7 是一組「遠端自動安裝 git」UX，需要 streaming-progress dialog、跨平台 package manager 檢測、sudo 風險確認 — 對使用者手動在 terminal 跑 `apt-get install git` 只多少量便利；scope 判斷為本階段不值得實作；提示訊息已指引使用者手動處理
 
 ## 12. 本機化與收尾（Localized user-facing strings / 在地化：全數進 xcstrings）
 
