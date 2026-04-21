@@ -75,6 +75,8 @@ struct GitGraphPanelView: View {
                 .truncationMode(.middle)
                 .layoutPriority(0)
 
+            branchFilterMenu
+
             Spacer(minLength: 8)
 
             searchField
@@ -98,6 +100,106 @@ struct GitGraphPanelView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(theme.toolbar)
+    }
+
+    // MARK: - Branch filter (Tasks 7.1 / 7.2 / 7.3)
+
+    /// Dropdown that narrows the commit list to a single branch's reachable
+    /// history. "All branches" (nil `branchFilter`) falls back to
+    /// `git log --all` in the provider. Changing the selection clears the
+    /// pending scroll anchor and triggers a full reload so the list begins
+    /// at the branch tip rather than the previous scroll position.
+    private var branchFilterMenu: some View {
+        let current = panel.branchFilter
+        let allLabel = String(
+            localized: "gitGraph.toolbar.branchFilter.all",
+            defaultValue: "All branches"
+        )
+        let branches = panel.snapshot?.branches ?? []
+        let localBranches = branches.filter { !$0.isRemote }
+        let remoteBranches = branches.filter { $0.isRemote }
+
+        return Menu {
+            Button {
+                selectBranchFilter(nil)
+            } label: {
+                Label(allLabel, systemImage: current == nil ? "checkmark" : "")
+            }
+
+            if !localBranches.isEmpty {
+                Section(String(
+                    localized: "gitGraph.toolbar.branchFilter.localSection",
+                    defaultValue: "Local"
+                )) {
+                    ForEach(localBranches, id: \.name) { branch in
+                        Button {
+                            selectBranchFilter(branch.name)
+                        } label: {
+                            Label(
+                                branch.name,
+                                systemImage: current == branch.name ? "checkmark" : ""
+                            )
+                        }
+                    }
+                }
+            }
+
+            if !remoteBranches.isEmpty {
+                Section(String(
+                    localized: "gitGraph.toolbar.branchFilter.remoteSection",
+                    defaultValue: "Remote"
+                )) {
+                    ForEach(remoteBranches, id: \.name) { branch in
+                        Button {
+                            selectBranchFilter(branch.name)
+                        } label: {
+                            Label(
+                                branch.name,
+                                systemImage: current == branch.name ? "checkmark" : ""
+                            )
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 10))
+                Text(current ?? allLabel)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .foregroundColor(theme.foreground)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(theme.inputBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(theme.divider, lineWidth: 0.5)
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(Text(String(
+            localized: "gitGraph.toolbar.branchFilter.tooltip",
+            defaultValue: "Filter commits to a single branch"
+        )))
+    }
+
+    private func selectBranchFilter(_ name: String?) {
+        guard panel.branchFilter != name else { return }
+        panel.branchFilter = name
+        // The previous anchor belongs to the superset of commits; forgetting
+        // it lets the refreshed list render from the branch tip at the top.
+        panel.scrollAnchorSha = nil
+        panel.reload()
     }
 
     private var searchField: some View {

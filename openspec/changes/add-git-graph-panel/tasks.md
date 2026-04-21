@@ -58,9 +58,9 @@
 
 ## 7. Phase 3 — Branch filter（Single-branch filter / Branch filter 使用單選 + `--all` 切換）
 
-- [ ] 7.1 Panel toolbar 新增 branch 下拉選單（Single-branch filter），預設 "All"
-- [ ] 7.2 選特定 branch 時，`GitGraphProvider.fetchGraph` 以 `branchFilter` 參數改用 `git log <branch>`；選 All 時回 `--all`
-- [ ] 7.3 Filter 變更時清除 commit list 並重新載入，保留 scroll 至 top
+- [x] 7.1 Panel toolbar 新增 branch 下拉選單（Single-branch filter），預設 "All branches"；Menu 分 Local / Remote 兩組；已選項目前方打 checkmark
+- [x] 7.2 選特定 branch 時 `panel.branchFilter = name` → `GitGraphProvider.fetchCommits(branchFilter: ...)` 已經支援：nil 走 `--all`，非 nil 走 `git log <branch>`
+- [x] 7.3 Filter 變更時呼叫 `selectBranchFilter(_:)` 清空 `scrollAnchorSha` 並 `reload()`；LazyVStack 重建時從頂端渲染
 - [ ] 7.4 實作「HEAD outside current filter」toolbar 橫幅：當 filter 開啟且 HEAD commit 不在 filter 可達集合時，顯示 `HEAD is on <branch-name>, not in current filter`（dirty 工作樹時附加 `(uncommitted changes)`）＋「Show All」按鈕；filter 下隱藏 Uncommitted Changes row
 
 ## 8. Phase 3 — Search 高亮與篩選（Commit search with highlight / Search：前端 fuzzy + 高亮為預設，可切換篩選模式）
