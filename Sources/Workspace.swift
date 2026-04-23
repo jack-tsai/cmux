@@ -336,7 +336,10 @@ extension Workspace {
         )
     }
 
-    func restoreSessionSnapshot(_ snapshot: SessionWorkspaceSnapshot) {
+    func restoreSessionSnapshot(
+        _ snapshot: SessionWorkspaceSnapshot,
+        restorableAgentIndex: RestorableAgentSessionIndex = .empty
+    ) {
         restoredTerminalScrollbackByPanelId.removeAll(keepingCapacity: false)
         restoredAgentSnapshotsByPanelId.removeAll(keepingCapacity: false)
         restoredAgentAutoResumePendingPanelIds.removeAll(keepingCapacity: false)
@@ -356,7 +359,8 @@ extension Workspace {
                 entry.paneId,
                 snapshot: entry.snapshot,
                 panelSnapshotsById: panelSnapshotsById,
-                oldToNewPanelIds: &oldToNewPanelIds
+                oldToNewPanelIds: &oldToNewPanelIds,
+                restorableAgentIndex: restorableAgentIndex
             )
         }
 
@@ -664,7 +668,8 @@ extension Workspace {
         _ paneId: PaneID,
         snapshot: SessionPaneLayoutSnapshot,
         panelSnapshotsById: [UUID: SessionPanelSnapshot],
-        oldToNewPanelIds: inout [UUID: UUID]
+        oldToNewPanelIds: inout [UUID: UUID],
+        restorableAgentIndex: RestorableAgentSessionIndex
     ) {
         let existingPanelIds = bonsplitController
             .tabs(inPane: paneId)
@@ -674,7 +679,11 @@ extension Workspace {
         var createdPanelIds: [UUID] = []
         for oldPanelId in desiredOldPanelIds {
             guard let panelSnapshot = panelSnapshotsById[oldPanelId] else { continue }
-            guard let createdPanelId = createPanel(from: panelSnapshot, inPane: paneId) else { continue }
+            guard let createdPanelId = createPanel(
+                from: panelSnapshot,
+                inPane: paneId,
+                restorableAgentIndex: restorableAgentIndex
+            ) else { continue }
             createdPanelIds.append(createdPanelId)
             oldToNewPanelIds[oldPanelId] = createdPanelId
         }
@@ -703,15 +712,33 @@ extension Workspace {
         }
     }
 
-    private func createPanel(from snapshot: SessionPanelSnapshot, inPane paneId: PaneID) -> UUID? {
+    private func createPanel(
+        from snapshot: SessionPanelSnapshot,
+        inPane paneId: PaneID,
+        restorableAgentIndex: RestorableAgentSessionIndex = .empty
+    ) -> UUID? {
         switch snapshot.type {
         case .terminal:
+            // The snapshot's `agent` field captures whatever autosave
+            // managed to record at its last tick — so a crash before the
+            // next autosave, or a session the user resumed *after* that
+            // tick, will either leave it nil or make it stale. The hook
+            // store at `~/.cmuxterm/<kind>-hook-sessions.json` is updated
+            // on every PreToolUse, so it's at least as fresh in practice
+            // and strictly fresher when the user manually switched
+            // sessions mid-save-cycle. Prefer it when present; fall back
+            // to the snapshot for sessions the hook never saw (older
+            // cmux versions, hook misconfig, non-agent panes with stored
+            // agent fields from legacy migrations, etc.).
+            let hookAgent = restorableAgentIndex.snapshot(
+                workspaceId: self.id, panelId: snapshot.id
+            )
+            let restorableAgent = hookAgent ?? snapshot.terminal?.agent
             let workingDirectory =
                 snapshot.terminal?.workingDirectory
-                ?? snapshot.terminal?.agent?.workingDirectory
+                ?? restorableAgent?.workingDirectory
                 ?? snapshot.directory
                 ?? currentDirectory
-            let restorableAgent = snapshot.terminal?.agent
             let shouldReplayScrollback = Self.shouldReplaySessionScrollback(
                 restorableAgent: restorableAgent
             )

@@ -2384,7 +2384,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 "snapshotDisplay={\(debugSessionDisplayDescription(snapshot.display))}"
         )
 #endif
-        context.tabManager.restoreSessionSnapshot(snapshot.tabManager)
+        // Load the cmux PreToolUse hook store (live agent sessions) so
+        // restorePane can fall back to it when the persisted snapshot's
+        // agent field is nil or stale — see the comment in
+        // Workspace.createPanel for the full rationale. `.load()` reads
+        // ~/.cmuxterm/<kind>-hook-sessions.json for each agent kind and
+        // returns `.empty` if none exist, so this is cheap on first run.
+        let agentIndex = RestorableAgentSessionIndex.load()
+        context.tabManager.restoreSessionSnapshot(
+            snapshot.tabManager,
+            restorableAgentIndex: agentIndex
+        )
         context.sidebarState.isVisible = snapshot.sidebar.isVisible
         context.sidebarState.persistedWidth = CGFloat(
             SessionPersistencePolicy.sanitizedSidebarWidth(snapshot.sidebar.width)
@@ -5575,7 +5585,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let windowId = UUID()
         let tabManager = TabManager(initialWorkingDirectory: initialWorkingDirectory)
         if let tabManagerSnapshot = sessionWindowSnapshot?.tabManager {
-            tabManager.restoreSessionSnapshot(tabManagerSnapshot)
+            // Same hook-store fallback as `applySessionWindowSnapshot`:
+            // load the live agent index so createPanel can resume agent
+            // sessions that autosave missed.
+            tabManager.restoreSessionSnapshot(
+                tabManagerSnapshot,
+                restorableAgentIndex: RestorableAgentSessionIndex.load()
+            )
         }
 
         let sidebarWidth = sessionWindowSnapshot?.sidebar.width

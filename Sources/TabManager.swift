@@ -7266,7 +7266,10 @@ extension TabManager {
         workspace.owningTabManager = nil
     }
 
-    func restoreSessionSnapshot(_ snapshot: SessionTabManagerSnapshot) {
+    func restoreSessionSnapshot(
+        _ snapshot: SessionTabManagerSnapshot,
+        restorableAgentIndex: RestorableAgentSessionIndex = .empty
+    ) {
         let previousTabs = tabs
         for tab in previousTabs {
             unwireClosedBrowserTracking(for: tab)
@@ -7307,7 +7310,10 @@ extension TabManager {
                 portOrdinal: ordinal
             )
             workspace.owningTabManager = self
-            workspace.restoreSessionSnapshot(workspaceSnapshot)
+            workspace.restoreSessionSnapshot(
+                workspaceSnapshot,
+                restorableAgentIndex: restorableAgentIndex
+            )
             wireClosedBrowserTracking(for: workspace)
             newTabs.append(workspace)
         }
