@@ -215,6 +215,15 @@ else
     echo "==> Seeding cache from existing local GhosttyKit.xcframework (build key matches)"
   elif try_fetch_prebuilt_xcframework; then
     echo "==> Seeding cache from prebuilt GhosttyKit.xcframework"
+  elif [[ "${CMUX_SKIP_ZIG_BUILD:-}" == "1" && -d "$LOCAL_XCFRAMEWORK" ]]; then
+    # Escape hatch when the host's zig version is incompatible with the
+    # pinned ghostty submodule (e.g., zig 0.16 vs required 0.15.2). The
+    # existing local xcframework is reused even though its stamp key no
+    # longer matches GHOSTTY_KEY (typically due to unrelated untracked
+    # files in the submodule making it "dirty").
+    echo "==> CMUX_SKIP_ZIG_BUILD=1: reusing local GhosttyKit.xcframework despite key mismatch"
+    echo "$GHOSTTY_KEY" > "$LOCAL_KEY_STAMP"
+    echo "$GHOSTTY_SHA" > "$LEGACY_LOCAL_SHA_STAMP"
   else
     echo "==> Building GhosttyKit.xcframework (this may take a few minutes)..."
     (
