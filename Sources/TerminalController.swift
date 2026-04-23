@@ -2063,6 +2063,32 @@ class TerminalController {
                     "required": accessMode.requiresPasswordAuth
                 ]
             )
+        case "auth.status":
+            return v2Ok(id: id, result: v2AuthStatusPayload(timedOut: false))
+        case "auth.begin_sign_in":
+            // Fire the popup on main, then block the socket worker thread
+            // until AuthManager.$isAuthenticated flips to true (or the
+            // timeout elapses). The RPC reply is the callback — no client
+            // polling required.
+            let timeoutSeconds = (params["timeout_seconds"] as? Double) ?? 300
+            let semaphore = DispatchSemaphore(value: 0)
+            nonisolated(unsafe) var signedIn = false
+            Task { @MainActor in
+                signedIn = await AuthManager.shared.beginSignInAndAwait(
+                    timeout: timeoutSeconds
+                )
+                semaphore.signal()
+            }
+            semaphore.wait()
+            return v2Ok(id: id, result: v2AuthStatusPayload(timedOut: !signedIn))
+        case "auth.sign_out":
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                _ = await AuthManager.shared.signOutAndAwait(timeout: 5)
+                semaphore.signal()
+            }
+            semaphore.wait()
+            return v2Ok(id: id, result: v2AuthStatusPayload(timedOut: false))
 
         // Windows
         case "window.list":
@@ -2115,6 +2141,8 @@ class TerminalController {
             return v2Result(id: id, self.v2WorkspaceRemoteStatus(params: params))
         case "workspace.remote.terminal_session_end":
             return v2Result(id: id, self.v2WorkspaceRemoteTerminalSessionEnd(params: params))
+        case "session.restore_previous":
+            return v2Result(id: id, self.v2SessionRestorePrevious())
 
         // Settings
         case "settings.open":
@@ -2464,6 +2492,9 @@ class TerminalController {
             "system.identify",
             "system.tree",
             "auth.login",
+            "auth.status",
+            "auth.begin_sign_in",
+            "auth.sign_out",
             "window.list",
             "window.current",
             "window.focus",
@@ -2488,6 +2519,7 @@ class TerminalController {
             "workspace.remote.disconnect",
             "workspace.remote.status",
             "workspace.remote.terminal_session_end",
+            "session.restore_previous",
             "settings.open",
             "feedback.open",
             "feedback.submit",
@@ -2946,6 +2978,40 @@ class TerminalController {
 
     // MARK: - V2 Helpers (encoding + result plumbing)
     // MARK: - V2 Helpers (encoding + result plumbing)
+
+    private func v2AuthStatusPayload(timedOut: Bool) -> [String: Any] {
+        var result: [String: Any] = [:]
+        v2MainSync {
+            let manager = AuthManager.shared
+            var status: [String: Any] = [
+                "signed_in": manager.isAuthenticated,
+                "is_restoring_session": manager.isRestoringSession,
+                "is_loading": manager.isLoading,
+                "timed_out": timedOut
+            ]
+            if let user = manager.currentUser {
+                var userDict: [String: Any] = ["id": user.id]
+                if let email = user.primaryEmail { userDict["email"] = email }
+                if let name = user.displayName { userDict["display_name"] = name }
+                status["user"] = userDict
+            }
+            if let teamID = manager.resolvedTeamID {
+                status["selected_team_id"] = teamID
+            }
+            if !manager.availableTeams.isEmpty {
+                status["teams"] = manager.availableTeams.map { team -> [String: Any] in
+                    var dict: [String: Any] = [
+                        "id": team.id,
+                        "display_name": team.displayName
+                    ]
+                    if let slug = team.slug { dict["slug"] = slug }
+                    return dict
+                }
+            }
+            result = status
+        }
+        return result
+    }
 
     private func v2OrNull(_ value: Any?) -> Any {
         // Avoid relying on `?? NSNull()` inference (Swift toolchains can disagree).
@@ -6960,6 +7026,24 @@ class TerminalController {
             FeedbackComposerBridge.openComposer(in: targetWindow)
         }
         return .ok(["opened": true])
+    }
+
+    private func v2SessionRestorePrevious() -> V2CallResult {
+        var restored = false
+        v2MainSync {
+            restored = AppDelegate.shared?.reopenPreviousSession(shouldActivate: false) ?? false
+        }
+        guard restored else {
+            return .err(
+                code: "not_found",
+                message: String(
+                    localized: "terminal.restore.no_snapshot",
+                    defaultValue: "No previous session snapshot available"
+                ),
+                data: nil
+            )
+        }
+        return .ok(["restored": true])
     }
 
     private func v2SettingsOpen(params: [String: Any]) -> V2CallResult {
