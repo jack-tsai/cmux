@@ -16,6 +16,7 @@
 		CAFE0101 /* GitGraphProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0001 /* GitGraphProvider.swift */; };
 		FE002102 /* FileExplorerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE002002 /* FileExplorerStoreTests.swift */; };
 		CAFE1101 /* GitGraphProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE1001 /* GitGraphProviderTests.swift */; };
+		A5003201 /* MermaidRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5003200 /* MermaidRendererTests.swift */; };
 		DF000101 /* FilePreviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000001 /* FilePreviewPanel.swift */; };
 		DF000102 /* FilePreviewPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000002 /* FilePreviewPanelView.swift */; };
 		DF000103 /* DiffPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000003 /* DiffPanel.swift */; };
@@ -257,6 +258,7 @@
 		FE002001 /* FileExplorerRootResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerRootResolverTests.swift; sourceTree = "<group>"; };
 		FE002002 /* FileExplorerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerStoreTests.swift; sourceTree = "<group>"; };
 		CAFE1001 /* GitGraphProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphProviderTests.swift; sourceTree = "<group>"; };
+		A5003200 /* MermaidRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidRendererTests.swift; sourceTree = "<group>"; };
 		DF000001 /* FilePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewPanel.swift; sourceTree = "<group>"; };
 		DF000002 /* FilePreviewPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewPanelView.swift; sourceTree = "<group>"; };
 		DF000003 /* DiffPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/DiffPanel.swift; sourceTree = "<group>"; };
@@ -733,6 +735,7 @@
 					FE002001 /* FileExplorerRootResolverTests.swift */,
 					FE002002 /* FileExplorerStoreTests.swift */,
 					CAFE1001 /* GitGraphProviderTests.swift */,
+					A5003200 /* MermaidRendererTests.swift */,
 					DF001001 /* DiffProviderTests.swift */,
 					DF001002 /* FileOpenDispatchTests.swift */,
 					DF001003 /* WorkspaceTabDedupTests.swift */,
@@ -1075,6 +1078,7 @@
 					FE002101 /* FileExplorerRootResolverTests.swift in Sources */,
 					FE002102 /* FileExplorerStoreTests.swift in Sources */,
 					CAFE1101 /* GitGraphProviderTests.swift in Sources */,
+					A5003201 /* MermaidRendererTests.swift in Sources */,
 					DF001101 /* DiffProviderTests.swift in Sources */,
 					DF001102 /* FileOpenDispatchTests.swift in Sources */,
 					DF001103 /* WorkspaceTabDedupTests.swift in Sources */,
