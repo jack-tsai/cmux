@@ -9186,6 +9186,13 @@ struct VerticalTabsSidebar: View {
             claudeStatsTheme = ClaudeStatsTheme.make(from: GhosttyConfig.load(useCache: false))
         }
         .onAppear {
+            // Existing users whose initial auto-configure predates the
+            // session-tracking hooks get them appended here — see
+            // `migrateSessionTrackingHooksIfNeeded`. No-op for fresh installs
+            // (not yet connected) and for users already on the new setup,
+            // so the cost is a single JSON parse of ~/.claude/settings.json
+            // per sidebar mount.
+            claudeSettingsInspector.migrateSessionTrackingHooksIfNeeded()
             claudeConnectionStatus = claudeSettingsInspector.classifyConnectionStatus()
         }
         .accessibilityIdentifier("Sidebar")

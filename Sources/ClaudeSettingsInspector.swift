@@ -63,6 +63,46 @@ final class ClaudeSettingsInspector {
         return "\(prefix) record-compact"
     }
 
+    // MARK: - Session-tracking hooks
+
+    /// Claude event → `cmux claude-hook <subcommand>` mapping. These hooks
+    /// populate `~/.cmuxterm/claude-hook-sessions.json` — the store
+    /// `RestorableAgentSessionIndex.load()` reads so the app can auto-resume
+    /// the agent session attached to each terminal tab after relaunch.
+    /// Without them, both the save-path (`Workspace.sessionSnapshot`) and
+    /// the restore-path (`Workspace.createPanel`) run against an empty
+    /// index and restored tabs come up as blank shells.
+    ///
+    /// Essential for session restore:
+    ///   - `SessionStart`   → seeds the store with (sessionId, workspaceId, surfaceId)
+    ///   - `PreToolUse`     → keeps the record fresh on every tool call
+    ///   - `Stop` / `SessionEnd` → clears the record so dead sessions don't
+    ///     resurface on the next relaunch
+    ///
+    /// Nice-to-have for status/notifications:
+    ///   - `UserPromptSubmit` / `Notification` — used elsewhere in cmux to
+    ///     surface "needs attention" chrome; included here so users get the
+    ///     full integration from one opt-in.
+    static let claudeSessionHookEvents: [(event: String, subcommand: String)] = [
+        ("SessionStart", "session-start"),
+        ("PreToolUse", "pre-tool-use"),
+        ("Stop", "stop"),
+        ("SessionEnd", "session-end"),
+        ("Notification", "notification"),
+        ("UserPromptSubmit", "prompt-submit"),
+    ]
+
+    /// Concrete command strings for each session-tracking hook, resolved
+    /// against the active binary name (`cmux` or `cmux-dev`). Computed so
+    /// tagged Debug builds get `cmux-dev claude-hook …` without test setup.
+    var desiredSessionHookCommands: [(event: String, command: String)] {
+        let binaryName = Bundle.main.object(forInfoDictionaryKey: "CMUXCLIBinaryName") as? String
+        let prefix = binaryName?.trimmingCharacters(in: .whitespaces).nonEmpty ?? "cmux"
+        return Self.claudeSessionHookEvents.map {
+            (event: $0.event, command: "\(prefix) claude-hook \($0.subcommand)")
+        }
+    }
+
     // MARK: - Classify
 
     /// Returns the current connection status by inspecting the settings file.
@@ -95,6 +135,67 @@ final class ClaudeSettingsInspector {
         let exe = (parts[0] as NSString).lastPathComponent
         guard exe == "cmux" || exe == "cmux-dev" else { return false }
         return parts[1].hasPrefix("statusline")
+    }
+
+    /// Pure matcher for a `cmux claude-hook <subcommand>` command string.
+    /// Accepts bare or absolute-path binary + matches the subcommand token
+    /// so an absolute-path entry still reads as "installed".
+    static func isCmuxClaudeHookCommand(_ raw: String, subcommand: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard parts.count >= 3 else { return false }
+        let exe = (parts[0] as NSString).lastPathComponent
+        guard exe == "cmux" || exe == "cmux-dev" else { return false }
+        guard parts[1] == "claude-hook" else { return false }
+        return parts[2] == subcommand
+    }
+
+    /// True when every Claude event in `claudeSessionHookEvents` has at
+    /// least one hook entry pointing at `cmux claude-hook <subcommand>`.
+    /// Used by the migration path on app start to decide whether an
+    /// already-"connected" user (statusLine set, pre-session-hooks era)
+    /// needs to have the session hooks appended. Returns false on a
+    /// missing / unreadable settings file too.
+    func hasCompleteSessionTrackingSetup() -> Bool {
+        guard let data = try? Data(contentsOf: settingsURL),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        let hooksDict = (parsed["hooks"] as? [String: Any]) ?? [:]
+        for entry in Self.claudeSessionHookEvents {
+            guard let eventEntries = hooksDict[entry.event] as? [[String: Any]] else {
+                return false
+            }
+            let hasCmuxHook = eventEntries.contains { outer in
+                guard let nested = outer["hooks"] as? [[String: Any]] else { return false }
+                return nested.contains { hook in
+                    guard let command = hook["command"] as? String else { return false }
+                    return Self.isCmuxClaudeHookCommand(command, subcommand: entry.subcommand)
+                }
+            }
+            if !hasCmuxHook { return false }
+        }
+        return true
+    }
+
+    /// One-shot migration hook. If `classifyConnectionStatus() == .connected`
+    /// (the user already opted into cmux's settings integration at some
+    /// point) but the session-tracking hooks are missing, re-run
+    /// `autoConfigureAtomic` so the appended hooks land without requiring
+    /// the user to click "Auto-configure" again. No-op for fresh installs
+    /// (they go through the normal setup card flow) and for users who
+    /// never opted in. Swallows failures — the setup card remains
+    /// available for manual retry if the silent attempt didn't land.
+    @discardableResult
+    func migrateSessionTrackingHooksIfNeeded() -> Bool {
+        guard classifyConnectionStatus() == .connected else { return false }
+        guard !hasCompleteSessionTrackingSetup() else { return false }
+        do {
+            try autoConfigureAtomic()
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Auto-configure
@@ -137,6 +238,13 @@ final class ClaudeSettingsInspector {
 
         json = Self.mergeStatusline(into: json, command: desiredStatusLineCommand)
         json = Self.mergePreCompactHook(into: json, command: desiredCompactHookCommand)
+        // Session-tracking hooks populate the on-disk panel↔session map the
+        // restore path falls back to. Installed idempotently alongside the
+        // long-standing statusLine + PreCompact merges; existing non-cmux
+        // entries under the same event are preserved (see `mergeCommandHook`).
+        for entry in desiredSessionHookCommands {
+            json = Self.mergeCommandHook(into: json, event: entry.event, command: entry.command)
+        }
 
         let newData: Data
         do {
@@ -167,31 +275,44 @@ final class ClaudeSettingsInspector {
     }
 
     static func mergePreCompactHook(into json: [String: Any], command: String) -> [String: Any] {
+        mergeCommandHook(into: json, event: "PreCompact", command: command)
+    }
+
+    /// Generic idempotent merge of a Claude `hooks.<event>` entry. Appends
+    /// `{matcher:"", hooks:[{type:"command", command:<command>}]}` to the
+    /// event's array if no existing entry under that event already invokes
+    /// `<command>`. Leaves unrelated entries for the same event in place so
+    /// a user's own hook scripts coexist with cmux's.
+    static func mergeCommandHook(
+        into json: [String: Any],
+        event: String,
+        command: String
+    ) -> [String: Any] {
         var copy = json
         var hooks = (copy["hooks"] as? [String: Any]) ?? [:]
-        var preCompact = (hooks["PreCompact"] as? [[String: Any]]) ?? []
+        var entries = (hooks[event] as? [[String: Any]]) ?? []
 
         // Check if an entry already invokes `command`.
-        let alreadyPresent = preCompact.contains { entry in
+        let alreadyPresent = entries.contains { entry in
             guard let nested = entry["hooks"] as? [[String: Any]] else { return false }
             return nested.contains { hook in
                 (hook["command"] as? String) == command
             }
         }
         if alreadyPresent {
-            hooks["PreCompact"] = preCompact
+            hooks[event] = entries
             copy["hooks"] = hooks
             return copy
         }
 
-        preCompact.append([
+        entries.append([
             "matcher": "",
             "hooks": [[
                 "type": "command",
                 "command": command
             ]]
         ])
-        hooks["PreCompact"] = preCompact
+        hooks[event] = entries
         copy["hooks"] = hooks
         return copy
     }
