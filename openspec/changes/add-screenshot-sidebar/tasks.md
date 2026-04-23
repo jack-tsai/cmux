@@ -21,22 +21,22 @@
 
 ## 3. ScreenshotPanelView + preview + empty state（decisions：「Preview + list layout」）
 
-- [ ] 3.1 新增 `Sources/ScreenshotPanelView.swift`：頂部 toolbar（path label + Grid/List toggle + Refresh icon）、中段 4:3 preview area、底部 gallery container；SwiftUI `VStack(spacing:0)`；對應 spec `screenshot-panel-view` 的 Preview + gallery vertical layout。
-- [ ] 3.2 Auto-select 最新檔：`onAppear` 與 `onChange(of: store.entries)` 同時處理 `selectedId` — 初始 nil 且 entries 非空 → 設為 `entries[0].id`；使用者手動選過（`selectedId` 非 nil 且對應檔仍在）不動；對應 spec `screenshot-panel-view` 的 Auto-select most recent entry scenarios。
-- [ ] 3.3 Preview area 實作：`if let entry = selectedEntry` → `Image(nsImage: NSImage(contentsOf: entry.url) ?? fallbackIcon)` + `.resizable().scaledToFit().aspectRatio(4/3, contentMode: .fill)`；nil 時 render empty placeholder。對應 spec `screenshot-panel-view` 的 Preview + gallery 與 Empty state with folder picker。
-- [ ] 3.4 Empty state：store entries empty 時顯示 title `No screenshots yet` + hint 顯示 current resolved path；`loadError` 為 `.folderMissing` / `.permissionDenied` 時多顯一個 `Choose folder…` 按鈕 → 開 `NSOpenPanel(canChooseFiles:false, canChooseDirectories:true, allowsMultipleSelection:false)`；成功寫回 `screenshotPanel.path` 並 trigger store reload；對應 spec `screenshot-panel-view` 的 Empty state with folder picker scenarios。
-- [ ] 3.5 Truncated footer：`if store.isTruncated` 顯示 `Showing most recent 1000 of <N>`，font 11pt monospaced faint；對應 spec `screenshot-panel-view` 的 Truncated warning when folder exceeds 1000 entries scenarios。
-- [ ] 3.6 Theme-aware 配色：`@State claudeStatsTheme` / 新 `ScreenshotPanelTheme.make(from: GhosttyConfig)`（重用 `GitGraphTheme.ansiFallback` pattern）；`onReceive(...themes.reload-config)` 重算；對應 spec `screenshot-panel-view` 的 Theme-aware rendering scenarios。
+- [x] 3.1 新增 `Sources/ScreenshotPanelView.swift`：頂部 toolbar（path label + Grid/List toggle + Refresh icon）、中段 4:3 preview area、底部 gallery container；SwiftUI `VStack(spacing:0)`；對應 spec `screenshot-panel-view` 的 Preview + gallery vertical layout。
+- [x] 3.2 Auto-select 最新檔：`onAppear` 與 `onChange(of: store.entries)` 同時處理 `selectedId` — 初始 nil 且 entries 非空 → 設為 `entries[0].id`；使用者手動選過（`selectedId` 非 nil 且對應檔仍在）不動；對應 spec `screenshot-panel-view` 的 Auto-select most recent entry scenarios。
+- [x] 3.3 Preview area 實作：`if let entry = selectedEntry` → `Image(nsImage: NSImage(contentsOf: entry.url) ?? fallbackIcon)` + `.resizable().scaledToFit().aspectRatio(4/3, contentMode: .fill)`；nil 時 render empty placeholder。對應 spec `screenshot-panel-view` 的 Preview + gallery 與 Empty state with folder picker。
+- [x] 3.4 Empty state：store entries empty 時顯示 title `No screenshots yet` + hint 顯示 current resolved path；`loadError` 為 `.folderMissing` / `.permissionDenied` 時多顯一個 `Choose folder…` 按鈕 → 開 `NSOpenPanel(canChooseFiles:false, canChooseDirectories:true, allowsMultipleSelection:false)`；成功寫回 `screenshotPanel.path` 並 trigger store reload；對應 spec `screenshot-panel-view` 的 Empty state with folder picker scenarios。
+- [x] 3.5 Truncated footer：`if store.isTruncated` 顯示 `Showing most recent 1000 of <N>`，font 11pt monospaced faint；對應 spec `screenshot-panel-view` 的 Truncated warning when folder exceeds 1000 entries scenarios。
+- [x] 3.6 Theme-aware 配色：`@State claudeStatsTheme` / 新 `ScreenshotPanelTheme.make(from: GhosttyConfig)`（重用 `GitGraphTheme.ansiFallback` pattern）；`onReceive(...themes.reload-config)` 重算；對應 spec `screenshot-panel-view` 的 Theme-aware rendering scenarios。
 
 ## 4. Grid view + List view（decisions：「Grid vs List view」）
 
-- [ ] 4.1 [P] 新增 `Sources/ScreenshotGalleryGridView.swift`：`LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))])` + 每 cell `aspectRatio(4/3, contentMode: .fill)`；讀 `QLThumbnailGenerator` 產生 thumbnail，cache miss 顯示檔案 icon 當 placeholder；selection outline 2pt accent；對應 spec `screenshot-panel-view` 的 Grid view renders thumbnail cells scenarios。
-- [ ] 4.2 [P] 新增 `Sources/ScreenshotGalleryListView.swift`：`LazyVStack` + 每 row `HStack` 32×24 thumbnail + filename monospaced + relative mtime；對應 spec `screenshot-panel-view` 的 List view renders thumbnail + filename + mtime rows scenarios。
-- [ ] 4.3 新增 `Sources/ScreenshotRelativeTimeFormatter.swift`：`format(_ date: Date, now: Date)` → `"<Ns>"` < 60s / `"<Nm>"` < 60min / `"<Nh>"` < 24h / `"<Nd>"` 其它；對應 spec `screenshot-panel-view` 的 Relative time formatting scenarios。
-- [ ] 4.4 [P] 新增 `cmuxTests/ScreenshotRelativeTimeFormatterTests.swift`：fixture `now + {30s, 90s, 5min, 1h, 2.5h, 3d}` 驗格式輸出；對應 spec `screenshot-panel-view` 的 Relative time formatting 全部 scenarios。
-- [ ] 4.5 [P] 新增 `Sources/ScreenshotThumbnailCache.swift`：`NSCache<NSURL, NSImage>` LRU 200 條；key = URL，value = thumbnail；`mtime` 改變時 invalidate 對應 key；對應 design 決策「Thumbnail 生成」。
-- [ ] 4.6 [P] 新增 `cmuxTests/ScreenshotThumbnailCacheTests.swift`：驗 LRU eviction、mtime change 會 invalidate、不同 URL 不互相 evict（對應 design 決策「Thumbnail 生成」）。
-- [ ] 4.7 Grid / List 切換：toolbar 右上兩個 icon button（`square.grid.2x2` / `list.bullet`）bind 同一 `@AppStorage("screenshotPanel.viewMode")`；對應 spec `screenshot-panel-view` 的 Grid and List view modes with user-toggleable toolbar scenarios。
+- [x] 4.1 [P] 新增 `Sources/ScreenshotGalleryGridView.swift`：`LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))])` + 每 cell `aspectRatio(4/3, contentMode: .fill)`；讀 `QLThumbnailGenerator` 產生 thumbnail，cache miss 顯示檔案 icon 當 placeholder；selection outline 2pt accent；對應 spec `screenshot-panel-view` 的 Grid view renders thumbnail cells scenarios。
+- [x] 4.2 [P] 新增 `Sources/ScreenshotGalleryListView.swift`：`LazyVStack` + 每 row `HStack` 32×24 thumbnail + filename monospaced + relative mtime；對應 spec `screenshot-panel-view` 的 List view renders thumbnail + filename + mtime rows scenarios。
+- [x] 4.3 新增 `Sources/ScreenshotRelativeTimeFormatter.swift`：`format(_ date: Date, now: Date)` → `"<Ns>"` < 60s / `"<Nm>"` < 60min / `"<Nh>"` < 24h / `"<Nd>"` 其它；對應 spec `screenshot-panel-view` 的 Relative time formatting scenarios。
+- [x] 4.4 [P] 新增 `cmuxTests/ScreenshotRelativeTimeFormatterTests.swift`：fixture `now + {30s, 90s, 5min, 1h, 2.5h, 3d}` 驗格式輸出；對應 spec `screenshot-panel-view` 的 Relative time formatting 全部 scenarios。
+- [x] 4.5 [P] 新增 `Sources/ScreenshotThumbnailCache.swift`：`NSCache<NSURL, NSImage>` LRU 200 條；key = URL，value = thumbnail；`mtime` 改變時 invalidate 對應 key；對應 design 決策「Thumbnail 生成」。
+- [x] 4.6 [P] 新增 `cmuxTests/ScreenshotThumbnailCacheTests.swift`：驗 LRU eviction、mtime change 會 invalidate、不同 URL 不互相 evict（對應 design 決策「Thumbnail 生成」）。
+- [x] 4.7 Grid / List 切換：toolbar 右上兩個 icon button（`square.grid.2x2` / `list.bullet`）bind 同一 `@AppStorage("screenshotPanel.viewMode")`；對應 spec `screenshot-panel-view` 的 Grid and List view modes with user-toggleable toolbar scenarios。
 
 ## 5. 互動：單擊/雙擊/拖拽/右鍵（decisions：「雙擊 paste 走 TerminalImageTransfer 既有管線」「Drag-out」「右鍵 context menu 動作」）
 
