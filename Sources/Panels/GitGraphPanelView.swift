@@ -1,5 +1,18 @@
 import SwiftUI
 
+/// Shared `RelativeDateTimeFormatter` — building one costs ~a few hundred µs
+/// (reads locale, spins up a CFDateFormatter). Previously scoped as a
+/// `private static let` inside `GitGraphPanelView`, hoisted to file scope so
+/// `CommitRowView` can reuse the same instance without needing a reference
+/// back to the parent view. A single process-wide instance is safe because
+/// we only read it; formatters are documented thread-safe on modern
+/// Foundation when `unitsStyle` is set once.
+private let gitGraphRelativeDateFormatter: RelativeDateTimeFormatter = {
+    let f = RelativeDateTimeFormatter()
+    f.unitsStyle = .short
+    return f
+}()
+
 /// Read-only git graph panel view.
 /// Layout (left → right):
 ///   [Refs sidebar] | [Commit list + optional expanded detail]
@@ -30,17 +43,12 @@ struct GitGraphPanelView: View {
         from: GhosttyConfig.load()
     )
 
-    /// Shared `RelativeDateTimeFormatter` — building one costs ~a few hundred
-    /// µs (reads locale, spins up a CFDateFormatter). The commit row previously
-    /// allocated a fresh formatter per visible row per body pass, which showed
-    /// up in `sample(1)` traces during scroll. A single process-wide instance
-    /// is safe because we only read it; formatters are documented thread-safe
-    /// on modern Foundation when `unitsStyle` is set once.
-    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f
-    }()
+    /// Monotonic counter bumped alongside `theme` whenever the ghostty config
+    /// broadcasts a reload. `CommitRowView` / `StashRowView` include this
+    /// scalar in their `Equatable` comparison as a cheap proxy for "the theme
+    /// changed" — comparing the full `GitGraphTheme` struct per row would
+    /// walk every Color in the palette on each `==` call.
+    @State private var themeRevision: Int = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -71,7 +79,11 @@ struct GitGraphPanelView: View {
             // The themes-reload broadcast fires after GhosttyApp invalidates
             // the config cache, so a plain `.load()` returns the fresh theme.
             // Recompute once here — the view then picks it up via @State.
+            // Bump `themeRevision` so Equatable row views see a changed
+            // scalar and re-evaluate (their `==` ignores `theme` itself for
+            // cost reasons).
             theme = GitGraphTheme.make(from: GhosttyConfig.load(useCache: false))
+            themeRevision &+= 1
         }
     }
 
@@ -624,6 +636,36 @@ struct GitGraphPanelView: View {
             && (snapshot?.headSha).map { head in
                 !(snapshot?.commits.contains { $0.sha == head } ?? false)
             } == true
+        // Snapshot expansion state at the top so rows receive plain `Bool`
+        // inputs. Reading `panel.expandedCommitSha` directly inside the
+        // ForEach would pull the entire `panel: ObservableObject` into every
+        // row's dependency graph and re-invalidate the whole visible list on
+        // any `@Published` change — that's the hazard pattern CLAUDE.md
+        // flags, see the "Snapshot boundary for list subtrees" note.
+        let expandedSha = panel.expandedCommitSha
+        let expandedStashRef = panel.expandedStashRef
+        let pinnedStashRef = panel.pinnedStashRef
+        let headSha = snapshot?.headSha
+        let uncommittedCount = snapshot?.uncommittedCount ?? 0
+        let themeRevision = self.themeRevision
+        let theme = self.theme
+
+        // Build the closure bundle once per body pass. Children in the
+        // LazyVStack subtree only see closures + value snapshots, never the
+        // `panel` reference — so a future `@ObservedObject var panel` on a
+        // row becomes a compile-time error rather than a silent regression.
+        // Mirrors the pattern in `SessionIndexView.swift`
+        // (`IndexSectionActions` / `SectionGapActions`).
+        let panelRef = panel
+        let rowActions = GitGraphRowActions(
+            toggleCommitExpanded: { sha in panelRef.toggleExpanded(sha) },
+            toggleStashExpanded: { ref in panelRef.toggleExpandedStash(ref) },
+            unpinStash: {
+                panelRef.pinnedStashRef = nil
+                panelRef.expandedStashRef = nil
+            }
+        )
+
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -633,21 +675,52 @@ struct GitGraphPanelView: View {
                     // Task 7.4: hide Uncommitted row while a branch filter is
                     // active — the banner above already tells the user where
                     // HEAD (and thus the uncommitted diff) actually belongs.
-                    if !isFilterActive,
-                       let count = snapshot?.uncommittedCount,
-                       count > 0 {
-                        uncommittedRow(count: count)
+                    if !isFilterActive, uncommittedCount > 0 {
+                        uncommittedRow(count: uncommittedCount)
                     }
-                    if let pinnedRef = panel.pinnedStashRef,
+                    if let pinnedRef = pinnedStashRef,
                        let stash = snapshot?.stashes.first(where: { $0.ref == pinnedRef }) {
-                        stashRow(stash)
-                        if panel.expandedStashRef == pinnedRef {
+                        StashRowView(
+                            stash: stash,
+                            theme: theme,
+                            themeRevision: themeRevision,
+                            actions: rowActions
+                        ).equatable()
+                        if expandedStashRef == pinnedRef {
                             stashDetailView(stashRef: pinnedRef)
                         }
                     }
                     ForEach(visibleCommits) { commit in
-                        commitRow(commit, occupancy: occupancy, lowerQuery: lowerQuery)
-                        if panel.expandedCommitSha == commit.sha {
+                        let isExpanded = expandedSha == commit.sha
+                        let isHead = commit.sha == headSha && uncommittedCount == 0
+                        // `subjectHighlight` is the substring each row should
+                        // highlight inside its subject. It is non-empty only
+                        // when this commit's subject actually contains the
+                        // query — so rows whose subject is unaffected by a
+                        // keystroke keep an identical Equatable input (empty
+                        // string) and skip body evaluation. This is the main
+                        // win for type-to-filter scroll latency.
+                        let subjectMatches = !lowerQuery.isEmpty
+                            && commit.subjectLower.contains(lowerQuery)
+                        let isMatch = !lowerQuery.isEmpty
+                            && (subjectMatches
+                                || commit.authorLower.contains(lowerQuery)
+                                || commit.sha.hasPrefix(lowerQuery))
+                        let subjectHighlight = subjectMatches ? lowerQuery : ""
+                        CommitRowView(
+                            commit: commit,
+                            isHead: isHead,
+                            isExpanded: isExpanded,
+                            isMatch: isMatch,
+                            subjectHighlight: subjectHighlight,
+                            occupancy: occupancy,
+                            theme: theme,
+                            themeRevision: themeRevision,
+                            actions: rowActions
+                        )
+                        .equatable()
+                        .id(commit.sha)
+                        if isExpanded {
                             commitDetailView(for: commit)
                         }
                     }
@@ -749,45 +822,7 @@ struct GitGraphPanelView: View {
         return panel.snapshot?.commits.first(where: { commitMatches($0, lowerQuery: lower) })?.sha
     }
 
-    // MARK: - Stash row (Task 9.2)
-
-    @ViewBuilder
-    private func stashRow(_ stash: StashEntry) -> some View {
-        let isExpanded = panel.expandedStashRef == stash.ref
-        HStack(spacing: 10) {
-            Image(systemName: "pin.fill")
-                .font(.system(size: 10))
-                .foregroundColor(theme.refBadgeTag)
-            Text(stash.ref)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(theme.refBadgeText(on: theme.refBadgeTag))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(theme.refBadgeTag)
-                .cornerRadius(3)
-            Text(stash.subject)
-                .font(.system(size: 12))
-                .foregroundColor(theme.foreground)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: { panel.pinnedStashRef = nil; panel.expandedStashRef = nil }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(theme.faint)
-            }
-            .buttonStyle(.borderless)
-            .help(Text(String(
-                localized: "gitGraph.stashRow.unpin.tooltip",
-                defaultValue: "Remove stash from the list"
-            )))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(theme.refBadgeTag.opacity(0.12))
-        .contentShape(Rectangle())
-        .onTapGesture { panel.toggleExpandedStash(stash.ref) }
-    }
+    // MARK: - Stash detail (Task 9.2)
 
     @ViewBuilder
     private func stashDetailView(stashRef: String) -> some View {
@@ -836,144 +871,15 @@ struct GitGraphPanelView: View {
         .background(theme.success.opacity(0.08))
     }
 
-    private func commitRow(
-        _ commit: CommitNode,
-        occupancy: [String: WorktreeEntry],
-        lowerQuery: String
-    ) -> some View {
-        let isHead = commit.sha == panel.snapshot?.headSha
-            && (panel.snapshot?.uncommittedCount ?? 0) == 0
-        let isExpanded = panel.expandedCommitSha == commit.sha
-        let isMatch = !lowerQuery.isEmpty && commitMatches(commit, lowerQuery: lowerQuery)
-        let laneCount = max(
-            commit.laneIndex + 1,
-            (commit.parentLanes.max() ?? 0) + 1,
-            (commit.passThroughLanes.max() ?? 0) + 1
-        )
-        let graphWidth = CGFloat(laneCount) * GitGraphLaneMetrics.laneSpacing
-            + GitGraphLaneMetrics.laneSpacing
-        return HStack(spacing: 10) {
-            Canvas { context, size in
-                drawLanes(in: context, size: size, commit: commit, isHead: isHead)
-            }
-            // Fixed frame (not minHeight) — lane rows are a constant height, so
-            // letting SwiftUI flex the size would route through FlexFrameLayout
-            // which `sample(1)` traces showed as a hot path during scroll.
-            .frame(width: graphWidth, height: GitGraphLaneMetrics.rowHeight)
-
-            if !commit.refs.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(commit.refs, id: \.name) { ref in
-                        refBadge(ref, occupancy: occupancy)
-                    }
-                }
-            }
-
-            highlightedText(commit.subject, subjectLower: commit.subjectLower, lowerQuery: lowerQuery)
-                .font(.system(size: 12))
-                .foregroundColor(theme.foreground)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(relativeDate(commit.date))
-                .font(.system(size: 11))
-                .foregroundColor(theme.secondary)
-                .frame(width: 72, alignment: .trailing)
-
-            Text(commit.authorName)
-                .font(.system(size: 11))
-                .foregroundColor(theme.secondary)
-                .lineLimit(1)
-                .frame(width: 100, alignment: .trailing)
-
-            Text(commit.shortSha)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(theme.faint)
-                .frame(width: 72, alignment: .trailing)
-        }
-        // No vertical padding: the HStack's intrinsic height comes from the
-        // Canvas minHeight, so lane segments in adjacent rows line up at the
-        // row boundary without a gap. A Divider between rows would reintroduce
-        // that gap, so the list uses background-only separation instead.
-        .padding(.horizontal, 12)
-        .background(rowBackground(isExpanded: isExpanded, isMatch: isMatch))
-        .contentShape(Rectangle())
-        .onTapGesture { panel.toggleExpanded(commit.sha) }
-        .id(commit.sha)
-    }
-
-    private func rowBackground(isExpanded: Bool, isMatch: Bool) -> some View {
-        Group {
-            if isExpanded {
-                theme.selection.opacity(0.35)
-            } else if isMatch {
-                theme.searchMatch
-            } else {
-                Color.clear
-            }
-        }
-    }
-
-    /// Hot-path matcher used by the ForEach filter and per-row match-highlight.
-    /// Takes the already-lowercased query so the body evaluation only lowercases
-    /// once, and reads the precomputed `subjectLower` / `authorLower` on the
-    /// commit node instead of allocating a new lowercased String per row. SHA
-    /// is hex, so a direct `hasPrefix` skips a `lowercased()` entirely.
+    /// Hot-path matcher used by the ForEach filter. Takes the already-lowercased
+    /// query so the body evaluation only lowercases once, and reads the
+    /// precomputed `subjectLower` / `authorLower` on the commit node instead of
+    /// allocating a new lowercased String per row. SHA is hex, so a direct
+    /// `hasPrefix` skips a `lowercased()` entirely.
     private func commitMatches(_ commit: CommitNode, lowerQuery: String) -> Bool {
         commit.subjectLower.contains(lowerQuery)
             || commit.authorLower.contains(lowerQuery)
             || commit.sha.hasPrefix(lowerQuery)
-    }
-
-    /// Highlights matched substring within the commit subject when search is
-    /// active. Case-insensitive search, case-preserving display.
-    @ViewBuilder
-    private func highlightedText(
-        _ text: String, subjectLower: String, lowerQuery: String
-    ) -> some View {
-        if lowerQuery.isEmpty {
-            Text(text)
-        } else {
-            Text(attributedSubject(text, lowerText: subjectLower, lowerQuery: lowerQuery))
-        }
-    }
-
-    private func attributedSubject(
-        _ text: String, lowerText: String, lowerQuery: String
-    ) -> AttributedString {
-        guard !lowerQuery.isEmpty else { return AttributedString(text) }
-        var result = AttributedString("")
-        var cursor = text.startIndex
-        var searchStart = lowerText.startIndex
-        let highlightBg = theme.searchHighlightBg
-        let highlightFg = theme.searchHighlightFg
-        while let range = lowerText.range(of: lowerQuery, range: searchStart..<lowerText.endIndex) {
-            // Map the lowercased range onto the original `text` (same Unicode
-            // structure because `lowercased()` is 1:1 for BMP letters used in
-            // commit subjects).
-            let matchLow = text.index(
-                text.startIndex,
-                offsetBy: lowerText.distance(from: lowerText.startIndex, to: range.lowerBound)
-            )
-            let matchHigh = text.index(
-                matchLow,
-                offsetBy: lowerText.distance(from: range.lowerBound, to: range.upperBound)
-            )
-            if cursor < matchLow {
-                result.append(AttributedString(String(text[cursor..<matchLow])))
-            }
-            var highlighted = AttributedString(String(text[matchLow..<matchHigh]))
-            highlighted.backgroundColor = highlightBg
-            highlighted.foregroundColor = highlightFg
-            result.append(highlighted)
-            cursor = matchHigh
-            searchStart = range.upperBound
-        }
-        if cursor < text.endIndex {
-            result.append(AttributedString(String(text[cursor...])))
-        }
-        return result
     }
 
     // MARK: - Commit detail expansion
@@ -1223,118 +1129,6 @@ struct GitGraphPanelView: View {
         return String(format: template, count)
     }
 
-    private func relativeDate(_ date: Date) -> String {
-        Self.relativeDateFormatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    // MARK: - Graph lane drawing
-
-    private func drawLanes(
-        in context: GraphicsContext,
-        size: CGSize,
-        commit: CommitNode,
-        isHead: Bool
-    ) {
-        let midY = size.height / 2
-        let bottomY = size.height
-        let dotRadius: CGFloat = isHead ? 5.5 : 3.5
-        let ownX = laneCenterX(for: commit.laneIndex)
-
-        for lane in commit.passThroughLanes {
-            let x = laneCenterX(for: lane)
-            var path = Path()
-            path.move(to: CGPoint(x: x, y: 0))
-            path.addLine(to: CGPoint(x: x, y: bottomY))
-            context.stroke(path, with: .color(laneColor(for: lane)), lineWidth: 1.5)
-        }
-
-        var topSegment = Path()
-        topSegment.move(to: CGPoint(x: ownX, y: 0))
-        topSegment.addLine(to: CGPoint(x: ownX, y: midY))
-        context.stroke(topSegment, with: .color(laneColor(for: commit.laneIndex)), lineWidth: 1.5)
-
-        for (index, parentLane) in commit.parentLanes.enumerated() {
-            let parentX = laneCenterX(for: parentLane)
-            var path = Path()
-            path.move(to: CGPoint(x: ownX, y: midY))
-            if index == 0 && parentLane == commit.laneIndex {
-                path.addLine(to: CGPoint(x: ownX, y: bottomY))
-            } else {
-                let bendY = midY + (bottomY - midY) * 0.55
-                path.addCurve(
-                    to: CGPoint(x: parentX, y: bendY),
-                    control1: CGPoint(x: ownX, y: bendY * 0.8),
-                    control2: CGPoint(x: parentX, y: midY + (bendY - midY) * 0.2)
-                )
-                path.addLine(to: CGPoint(x: parentX, y: bottomY))
-            }
-            context.stroke(path, with: .color(laneColor(for: parentLane)), lineWidth: 1.5)
-        }
-
-        let dotRect = CGRect(
-            x: ownX - dotRadius,
-            y: midY - dotRadius,
-            width: dotRadius * 2,
-            height: dotRadius * 2
-        )
-        if isHead {
-            context.stroke(Path(ellipseIn: dotRect), with: .color(theme.headMarker), lineWidth: 2)
-            context.fill(
-                Path(ellipseIn: dotRect.insetBy(dx: 2, dy: 2)),
-                with: .color(laneColor(for: commit.laneIndex))
-            )
-        } else {
-            context.fill(Path(ellipseIn: dotRect), with: .color(laneColor(for: commit.laneIndex)))
-        }
-    }
-
-    private func laneCenterX(for laneIndex: Int) -> CGFloat {
-        GitGraphLaneMetrics.laneSpacing / 2
-            + CGFloat(laneIndex) * GitGraphLaneMetrics.laneSpacing
-    }
-
-    private func laneColor(for laneIndex: Int) -> Color {
-        theme.lanePalette[laneIndex % theme.lanePalette.count]
-    }
-
-    private func refBadge(_ ref: GitRef, occupancy: [String: WorktreeEntry] = [:]) -> some View {
-        let color: Color = {
-            switch ref.kind {
-            case .localBranch: return theme.refBadgeLocal
-            case .remoteBranch: return theme.refBadgeRemote
-            case .tag: return theme.refBadgeTag
-            case .head: return theme.headMarker
-            }
-        }()
-        // Task 10.3: a local branch checked out in *another* worktree gets
-        // a `⎘` icon with a tooltip naming the occupying path, so the user
-        // can see they shouldn't try to check it out here.
-        let occupyingWorktree = ref.kind == .localBranch ? occupancy[ref.name] : nil
-        return HStack(spacing: 3) {
-            Text(ref.name)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(theme.refBadgeText(on: color))
-            if occupyingWorktree != nil {
-                Image(systemName: "rectangle.on.rectangle")
-                    .font(.system(size: 8))
-                    .foregroundColor(theme.refBadgeText(on: color))
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 1)
-        .background(color)
-        .cornerRadius(3)
-        .help(Text(occupyingWorktree.map { wt in
-            String(
-                format: String(
-                    localized: "gitGraph.refBadge.worktreeOccupied.tooltip",
-                    defaultValue: "Checked out in worktree: %@"
-                ),
-                wt.path
-            )
-        } ?? ref.name))
-    }
-
     private var loadMoreButton: some View {
         HStack(spacing: 8) {
             if panel.isLoadingMore {
@@ -1362,6 +1156,337 @@ struct GitGraphPanelView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Row snapshot boundary (value-type row views)
+
+/// Closure bundle handed into `CommitRowView` / `StashRowView` so rows
+/// below the `LazyVStack` snapshot boundary cannot reach the
+/// `GitGraphPanel` ObservableObject. A future `@ObservedObject var
+/// panel: GitGraphPanel` accidentally added to a row becomes a type
+/// error rather than a silent 100% CPU regression. Mirrors
+/// `IndexSectionActions` / `SectionGapActions` in `SessionIndexView.swift`
+/// (CLAUDE.md "Snapshot boundary for list subtrees" note).
+struct GitGraphRowActions {
+    let toggleCommitExpanded: (String) -> Void
+    let toggleStashExpanded: (String) -> Void
+    let unpinStash: () -> Void
+}
+
+/// Equatable value row rendered inside the `LazyVStack` `ForEach`. Takes
+/// only value snapshots + a closure bundle so SwiftUI can skip body
+/// evaluation when nothing affecting this specific row has changed.
+///
+/// `themeRevision` is a cheap scalar proxy for `theme`: the parent bumps
+/// it on ghostty theme reload. Comparing the full `GitGraphTheme` struct
+/// per row would walk every Color in the palette on each `==` call.
+///
+/// `subjectHighlight` is non-empty only when this commit's subject
+/// actually contains the current search query — so rows unaffected by
+/// a keystroke keep an identical Equatable input (empty string) and
+/// skip body evaluation.
+private struct CommitRowView: View, Equatable {
+    let commit: CommitNode
+    let isHead: Bool
+    let isExpanded: Bool
+    let isMatch: Bool
+    let subjectHighlight: String
+    let occupancy: [String: WorktreeEntry]
+    let theme: GitGraphTheme
+    let themeRevision: Int
+    let actions: GitGraphRowActions
+
+    var body: some View {
+        let laneCount = max(
+            commit.laneIndex + 1,
+            (commit.parentLanes.max() ?? 0) + 1,
+            (commit.passThroughLanes.max() ?? 0) + 1
+        )
+        let graphWidth = CGFloat(laneCount) * GitGraphLaneMetrics.laneSpacing
+            + GitGraphLaneMetrics.laneSpacing
+        return HStack(spacing: 10) {
+            Canvas { context, size in
+                drawLanes(in: context, size: size)
+            }
+            // Fixed frame (not minHeight) — lane rows are a constant height, so
+            // letting SwiftUI flex the size would route through FlexFrameLayout
+            // which `sample(1)` traces showed as a hot path during scroll.
+            .frame(width: graphWidth, height: GitGraphLaneMetrics.rowHeight)
+
+            if !commit.refs.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(commit.refs, id: \.name) { ref in
+                        refBadge(ref)
+                    }
+                }
+            }
+
+            highlightedSubject
+                .font(.system(size: 12))
+                .foregroundColor(theme.foreground)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(
+                gitGraphRelativeDateFormatter.localizedString(
+                    for: commit.date, relativeTo: Date()
+                )
+            )
+            .font(.system(size: 11))
+            .foregroundColor(theme.secondary)
+            .frame(width: 72, alignment: .trailing)
+
+            Text(commit.authorName)
+                .font(.system(size: 11))
+                .foregroundColor(theme.secondary)
+                .lineLimit(1)
+                .frame(width: 100, alignment: .trailing)
+
+            Text(commit.shortSha)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(theme.faint)
+                .frame(width: 72, alignment: .trailing)
+        }
+        // No vertical padding: the HStack's intrinsic height comes from the
+        // Canvas minHeight, so lane segments in adjacent rows line up at the
+        // row boundary without a gap.
+        .padding(.horizontal, 12)
+        .background(rowBackground)
+        .contentShape(Rectangle())
+        .onTapGesture { actions.toggleCommitExpanded(commit.sha) }
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if isExpanded {
+            theme.selection.opacity(0.35)
+        } else if isMatch {
+            theme.searchMatch
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private var highlightedSubject: some View {
+        if subjectHighlight.isEmpty {
+            Text(commit.subject)
+        } else {
+            Text(attributedSubject())
+        }
+    }
+
+    private func attributedSubject() -> AttributedString {
+        let text = commit.subject
+        let lowerText = commit.subjectLower
+        let lowerQuery = subjectHighlight
+        guard !lowerQuery.isEmpty else { return AttributedString(text) }
+        var result = AttributedString("")
+        var cursor = text.startIndex
+        var searchStart = lowerText.startIndex
+        let highlightBg = theme.searchHighlightBg
+        let highlightFg = theme.searchHighlightFg
+        while let range = lowerText.range(
+            of: lowerQuery, range: searchStart..<lowerText.endIndex
+        ) {
+            // Map the lowercased range onto the original `text` (same Unicode
+            // structure because `lowercased()` is 1:1 for BMP letters used in
+            // commit subjects).
+            let matchLow = text.index(
+                text.startIndex,
+                offsetBy: lowerText.distance(from: lowerText.startIndex, to: range.lowerBound)
+            )
+            let matchHigh = text.index(
+                matchLow,
+                offsetBy: lowerText.distance(from: range.lowerBound, to: range.upperBound)
+            )
+            if cursor < matchLow {
+                result.append(AttributedString(String(text[cursor..<matchLow])))
+            }
+            var highlighted = AttributedString(String(text[matchLow..<matchHigh]))
+            highlighted.backgroundColor = highlightBg
+            highlighted.foregroundColor = highlightFg
+            result.append(highlighted)
+            cursor = matchHigh
+            searchStart = range.upperBound
+        }
+        if cursor < text.endIndex {
+            result.append(AttributedString(String(text[cursor...])))
+        }
+        return result
+    }
+
+    private func drawLanes(in context: GraphicsContext, size: CGSize) {
+        let midY = size.height / 2
+        let bottomY = size.height
+        let dotRadius: CGFloat = isHead ? 5.5 : 3.5
+        let ownX = laneCenterX(for: commit.laneIndex)
+
+        for lane in commit.passThroughLanes {
+            let x = laneCenterX(for: lane)
+            var path = Path()
+            path.move(to: CGPoint(x: x, y: 0))
+            path.addLine(to: CGPoint(x: x, y: bottomY))
+            context.stroke(path, with: .color(laneColor(for: lane)), lineWidth: 1.5)
+        }
+
+        var topSegment = Path()
+        topSegment.move(to: CGPoint(x: ownX, y: 0))
+        topSegment.addLine(to: CGPoint(x: ownX, y: midY))
+        context.stroke(
+            topSegment, with: .color(laneColor(for: commit.laneIndex)), lineWidth: 1.5
+        )
+
+        for (index, parentLane) in commit.parentLanes.enumerated() {
+            let parentX = laneCenterX(for: parentLane)
+            var path = Path()
+            path.move(to: CGPoint(x: ownX, y: midY))
+            if index == 0 && parentLane == commit.laneIndex {
+                path.addLine(to: CGPoint(x: ownX, y: bottomY))
+            } else {
+                let bendY = midY + (bottomY - midY) * 0.55
+                path.addCurve(
+                    to: CGPoint(x: parentX, y: bendY),
+                    control1: CGPoint(x: ownX, y: bendY * 0.8),
+                    control2: CGPoint(x: parentX, y: midY + (bendY - midY) * 0.2)
+                )
+                path.addLine(to: CGPoint(x: parentX, y: bottomY))
+            }
+            context.stroke(path, with: .color(laneColor(for: parentLane)), lineWidth: 1.5)
+        }
+
+        let dotRect = CGRect(
+            x: ownX - dotRadius,
+            y: midY - dotRadius,
+            width: dotRadius * 2,
+            height: dotRadius * 2
+        )
+        if isHead {
+            context.stroke(
+                Path(ellipseIn: dotRect), with: .color(theme.headMarker), lineWidth: 2
+            )
+            context.fill(
+                Path(ellipseIn: dotRect.insetBy(dx: 2, dy: 2)),
+                with: .color(laneColor(for: commit.laneIndex))
+            )
+        } else {
+            context.fill(
+                Path(ellipseIn: dotRect),
+                with: .color(laneColor(for: commit.laneIndex))
+            )
+        }
+    }
+
+    private func laneCenterX(for laneIndex: Int) -> CGFloat {
+        GitGraphLaneMetrics.laneSpacing / 2
+            + CGFloat(laneIndex) * GitGraphLaneMetrics.laneSpacing
+    }
+
+    private func laneColor(for laneIndex: Int) -> Color {
+        theme.lanePalette[laneIndex % theme.lanePalette.count]
+    }
+
+    @ViewBuilder
+    private func refBadge(_ ref: GitRef) -> some View {
+        let color: Color = {
+            switch ref.kind {
+            case .localBranch: return theme.refBadgeLocal
+            case .remoteBranch: return theme.refBadgeRemote
+            case .tag: return theme.refBadgeTag
+            case .head: return theme.headMarker
+            }
+        }()
+        // Task 10.3: a local branch checked out in *another* worktree gets
+        // a `⎘` icon with a tooltip naming the occupying path, so the user
+        // can see they shouldn't try to check it out here.
+        let occupyingWorktree = ref.kind == .localBranch ? occupancy[ref.name] : nil
+        HStack(spacing: 3) {
+            Text(ref.name)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(theme.refBadgeText(on: color))
+            if occupyingWorktree != nil {
+                Image(systemName: "rectangle.on.rectangle")
+                    .font(.system(size: 8))
+                    .foregroundColor(theme.refBadgeText(on: color))
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(color)
+        .cornerRadius(3)
+        .help(Text(occupyingWorktree.map { wt in
+            String(
+                format: String(
+                    localized: "gitGraph.refBadge.worktreeOccupied.tooltip",
+                    defaultValue: "Checked out in worktree: %@"
+                ),
+                wt.path
+            )
+        } ?? ref.name))
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // Omit `theme` — `themeRevision` captures its identity cheaply.
+        // Omit `actions` — closures are rebuilt once per parent body pass
+        // and are not Equatable.
+        lhs.commit == rhs.commit
+            && lhs.isHead == rhs.isHead
+            && lhs.isExpanded == rhs.isExpanded
+            && lhs.isMatch == rhs.isMatch
+            && lhs.subjectHighlight == rhs.subjectHighlight
+            && lhs.themeRevision == rhs.themeRevision
+            && lhs.occupancy == rhs.occupancy
+    }
+}
+
+/// Equatable value row for the pinned stash entry. Same snapshot-boundary
+/// reasoning as `CommitRowView`.
+private struct StashRowView: View, Equatable {
+    let stash: StashEntry
+    let theme: GitGraphTheme
+    let themeRevision: Int
+    let actions: GitGraphRowActions
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 10))
+                .foregroundColor(theme.refBadgeTag)
+            Text(stash.ref)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(theme.refBadgeText(on: theme.refBadgeTag))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(theme.refBadgeTag)
+                .cornerRadius(3)
+            Text(stash.subject)
+                .font(.system(size: 12))
+                .foregroundColor(theme.foreground)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: { actions.unpinStash() }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(theme.faint)
+            }
+            .buttonStyle(.borderless)
+            .help(Text(String(
+                localized: "gitGraph.stashRow.unpin.tooltip",
+                defaultValue: "Remove stash from the list"
+            )))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(theme.refBadgeTag.opacity(0.12))
+        .contentShape(Rectangle())
+        .onTapGesture { actions.toggleStashExpanded(stash.ref) }
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.stash == rhs.stash && lhs.themeRevision == rhs.themeRevision
     }
 }
 
