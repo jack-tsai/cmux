@@ -74,6 +74,8 @@ struct RightSidebarPanelView: View {
             contentForMode
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("RightSidebar")
         .onChange(of: showsScreenshotsTab) { newValue in
             fileExplorerState.mode = RightSidebarModeGate.resolve(
                 current: fileExplorerState.mode,
@@ -119,12 +121,6 @@ struct RightSidebarPanelView: View {
         .padding(.trailing, 6)
         .padding(.vertical, 4)
         .frame(height: 31)
-        // Explicit background + bottom-edge separator so the chip bar is
-        // visually distinct from the mode's inner toolbar (e.g. the
-        // ScreenshotPanelView's folder-label row). Without this the two
-        // strips visually merge on the dark Appearance and users see only
-        // the inner toolbar — reading as 'Files/Sessions are gone'.
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder

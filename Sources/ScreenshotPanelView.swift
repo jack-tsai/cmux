@@ -110,7 +110,11 @@ struct ScreenshotPanelView: View {
                 }
             }
         }
-        .background(theme.background)
+        // Intentionally no .background(): let the parent `SidebarBackdrop`
+        // show through so the screenshot panel matches FileExplorer /
+        // Sessions (both sibling panels are also transparent). Hardcoding a
+        // system color here caused a light-mode mismatch between left
+        // sidebar (SidebarBackdrop) and right sidebar (windowBackgroundColor).
         .onAppear {
             applyAutoSelection()
             refreshPreview()
