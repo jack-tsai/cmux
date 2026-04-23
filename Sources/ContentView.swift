@@ -2837,6 +2837,14 @@ struct ContentView: View {
                 sessionIndexStore: sessionIndexStore,
                 onResumeSession: { entry in
                     resumeSession(entry: entry)
+                },
+                onScreenshotPaste: { url in
+                    guard let workspace = tabManager.selectedWorkspace else { return }
+                    try? TerminalImageTransferPlanner.pasteFileURL(
+                        url,
+                        to: workspace,
+                        tabManager: tabManager
+                    )
                 }
             )
                 .frame(width: explorerVisible ? fileExplorerWidth : 0)
