@@ -478,6 +478,20 @@ private final class ClaudeHookSessionStore {
 
     private func withLockedState<T>(_ body: (inout ClaudeHookSessionStoreFile) throws -> T) throws -> T {
         let lockPath = statePath + ".lock"
+        // open(O_CREAT) creates the *file*, not its parent directory, so on a
+        // machine where ~/.cmuxterm has never existed (fresh install, or a
+        // user who never triggered `cmux setup-hooks`) this first call
+        // silently failed with ENOENT and `upsert`'s caller swallows the
+        // error — the hook printed "OK" and Claude moved on while the
+        // session store stayed unwritten, breaking auto-resume at restart.
+        // Create the parent directory up front; `withIntermediateDirectories`
+        // is a no-op when it already exists.
+        let stateURL = URL(fileURLWithPath: statePath)
+        try? fileManager.createDirectory(
+            at: stateURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
         let fd = open(lockPath, O_CREAT | O_RDWR, mode_t(S_IRUSR | S_IWUSR))
         if fd < 0 {
             throw CLIError(message: "Failed to open Claude hook state lock: \(lockPath)")
