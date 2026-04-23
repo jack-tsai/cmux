@@ -16,12 +16,46 @@ private let gitGraphRelativeDateFormatter: RelativeDateTimeFormatter = {
 /// Read-only git graph panel view.
 /// Layout (left → right):
 ///   [Refs sidebar] | [Commit list + optional expanded detail]
+///
+/// The view deliberately does **not** observe `GitGraphPanel` directly.
+/// The panel is kept as a plain `let` so its `ObservableObject`
+/// `objectWillChange` publisher (which still fires for `displayTitle`
+/// and `focusFlashToken`) cannot wake this body. Instead the view
+/// subscribes to four sub-stores — `dataStore`, `searchStore`,
+/// `expansionStore`, `stashStore` — each with its own publisher.
+/// This way a stash-detail fetch or a commit-detail cache populate no
+/// longer invalidates the search toolbar, the refs sidebar, or the
+/// commit list body. Pair the row-level snapshot boundary (see
+/// `CommitRowView` / `StashRowView`) with this coarser body-level one
+/// and every `@Published` write lands in exactly the scope that cares.
 struct GitGraphPanelView: View {
-    @ObservedObject var panel: GitGraphPanel
+    let panel: GitGraphPanel
+    @ObservedObject private var dataStore: GitGraphDataStore
+    @ObservedObject private var searchStore: GitGraphSearchStore
+    @ObservedObject private var expansionStore: GitGraphExpansionStore
+    @ObservedObject private var stashStore: GitGraphStashStore
     let isFocused: Bool
     let isVisibleInUI: Bool
     let portalPriority: Int
     let onRequestPanelFocus: () -> Void
+
+    init(
+        panel: GitGraphPanel,
+        isFocused: Bool,
+        isVisibleInUI: Bool,
+        portalPriority: Int,
+        onRequestPanelFocus: @escaping () -> Void
+    ) {
+        self.panel = panel
+        self._dataStore = ObservedObject(wrappedValue: panel.dataStore)
+        self._searchStore = ObservedObject(wrappedValue: panel.searchStore)
+        self._expansionStore = ObservedObject(wrappedValue: panel.expansionStore)
+        self._stashStore = ObservedObject(wrappedValue: panel.stashStore)
+        self.isFocused = isFocused
+        self.isVisibleInUI = isVisibleInUI
+        self.portalPriority = portalPriority
+        self.onRequestPanelFocus = onRequestPanelFocus
+    }
 
     @State private var sidebarVisible: Bool = true
     @State private var branchesExpanded: Bool = true
@@ -50,8 +84,8 @@ struct GitGraphPanelView: View {
     /// walk every Color in the palette on each `==` call.
     @State private var themeRevision: Int = 0
 
-    /// Debounced mirror of `panel.searchQuery`. The text field binds directly
-    /// to `panel.searchQuery` (keystroke-responsive UX), but rendering and
+    /// Debounced mirror of `searchStore.searchQuery`. The text field binds directly
+    /// to `searchStore.searchQuery` (keystroke-responsive UX), but rendering and
     /// Equatable row inputs read `debouncedQuery`, which coalesces rapid
     /// keystrokes into at most one re-filter every ~150 ms. Without this,
     /// every keystroke re-ran `visibleCommitsForRender` across the full
@@ -61,7 +95,7 @@ struct GitGraphPanelView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
 
     /// Cached `worktreeOccupancy` result. Derived from the snapshot's
-    /// `worktrees` list and only refreshed in `onReceive(panel.$snapshot)`.
+    /// `worktrees` list and only refreshed in `onReceive(dataStore.$snapshot)`.
     /// Replaces the previous per-body-pass rebuild at the top of
     /// `commitList`, which was visible in sample(1) traces when the panel
     /// re-rendered on unrelated `@Published` changes.
@@ -89,17 +123,17 @@ struct GitGraphPanelView: View {
             panel.refreshIfStale()
             // Seed the debounced query + occupancy cache so the first render
             // uses the right values without waiting for a publisher event.
-            debouncedQuery = panel.searchQuery.lowercased()
+            debouncedQuery = searchStore.searchQuery.lowercased()
             cachedOccupancy = Self.computeOccupancy(
                 workspaceDir: panel.workspaceDirectory,
-                worktrees: panel.snapshot?.worktrees ?? []
+                worktrees: dataStore.snapshot?.worktrees ?? []
             )
         }
         .onDisappear {
             searchDebounceTask?.cancel()
             searchDebounceTask = nil
         }
-        .onChange(of: panel.searchQuery) { _, newValue in
+        .onChange(of: searchStore.searchQuery) { _, newValue in
             // Empty → clear — feels instant so skip the 150 ms wait.
             // Non-empty → debounce so fast typing does not re-filter the
             // snapshot on every keystroke. `subjectHighlight` + `isMatch`
@@ -117,7 +151,7 @@ struct GitGraphPanelView: View {
                 debouncedQuery = newValue.lowercased()
             }
         }
-        .onReceive(panel.$snapshot) { snapshot in
+        .onReceive(dataStore.$snapshot) { snapshot in
             let next = Self.computeOccupancy(
                 workspaceDir: panel.workspaceDirectory,
                 worktrees: snapshot?.worktrees ?? []
@@ -187,7 +221,7 @@ struct GitGraphPanelView: View {
             searchField
                 .frame(maxWidth: 260)
 
-            if panel.isLoading {
+            if dataStore.isLoading {
                 ProgressView()
                     .controlSize(.small)
             }
@@ -215,12 +249,12 @@ struct GitGraphPanelView: View {
     /// pending scroll anchor and triggers a full reload so the list begins
     /// at the branch tip rather than the previous scroll position.
     private var branchFilterMenu: some View {
-        let current = panel.branchFilter
+        let current = searchStore.branchFilter
         let allLabel = String(
             localized: "gitGraph.toolbar.branchFilter.all",
             defaultValue: "All branches"
         )
-        let branches = panel.snapshot?.branches ?? []
+        let branches = dataStore.snapshot?.branches ?? []
         let localBranches = branches.filter { !$0.isRemote }
         let remoteBranches = branches.filter { $0.isRemote }
 
@@ -299,11 +333,11 @@ struct GitGraphPanelView: View {
     }
 
     private func selectBranchFilter(_ name: String?) {
-        guard panel.branchFilter != name else { return }
-        panel.branchFilter = name
+        guard searchStore.branchFilter != name else { return }
+        searchStore.branchFilter = name
         // The previous anchor belongs to the superset of commits; forgetting
         // it lets the refreshed list render from the branch tip at the top.
-        panel.scrollAnchorSha = nil
+        searchStore.scrollAnchorSha = nil
         panel.reload()
     }
 
@@ -317,13 +351,13 @@ struct GitGraphPanelView: View {
                     localized: "gitGraph.search.placeholder",
                     defaultValue: "Search commits, authors, SHAs"
                 ),
-                text: $panel.searchQuery
+                text: $searchStore.searchQuery
             )
             .textFieldStyle(.plain)
             .font(.system(size: 12))
             .foregroundColor(theme.foreground)
-            if !panel.searchQuery.isEmpty {
-                Button(action: { panel.searchQuery = "" }) {
+            if !searchStore.searchQuery.isEmpty {
+                Button(action: { searchStore.searchQuery = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
                         .foregroundColor(theme.secondary)
@@ -348,9 +382,9 @@ struct GitGraphPanelView: View {
     /// filter mode. Only visible while a search query is active — with no
     /// query to match the toggle is meaningless.
     private var searchModeToggle: some View {
-        let isFilter = panel.searchMode == .filter
+        let isFilter = searchStore.searchMode == .filter
         return Button(action: {
-            panel.searchMode = isFilter ? .highlight : .filter
+            searchStore.searchMode = isFilter ? .highlight : .filter
         }) {
             Image(systemName: isFilter ? "line.3.horizontal.decrease.circle.fill" : "highlighter")
                 .font(.system(size: 11))
@@ -374,7 +408,7 @@ struct GitGraphPanelView: View {
     private var refsSidebar: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if let snapshot = panel.snapshot {
+                if let snapshot = dataStore.snapshot {
                     refsSection(
                         title: String(
                             localized: "gitGraph.refs.branches",
@@ -434,7 +468,7 @@ struct GitGraphPanelView: View {
                 .padding(.vertical, 3)
             } else {
                 ForEach(snapshot.stashes, id: \.ref) { stash in
-                    let isPinned = panel.pinnedStashRef == stash.ref
+                    let isPinned = stashStore.pinnedStashRef == stash.ref
                     Button(action: { panel.togglePinnedStash(stash.ref) }) {
                         HStack(spacing: 4) {
                             if isPinned {
@@ -602,7 +636,7 @@ struct GitGraphPanelView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch panel.snapshot?.repoState {
+        switch dataStore.snapshot?.repoState {
         case .notARepo:
             emptyState(
                 title: String(
@@ -635,7 +669,7 @@ struct GitGraphPanelView: View {
                     )
                 } ?? panel.workspaceDirectory
             )
-        case .repo(_, let hasCommits) where !hasCommits && (panel.snapshot?.uncommittedCount ?? 0) == 0:
+        case .repo(_, let hasCommits) where !hasCommits && (dataStore.snapshot?.uncommittedCount ?? 0) == 0:
             emptyState(
                 title: String(
                     localized: "gitGraph.state.noCommits.title",
@@ -676,35 +710,35 @@ struct GitGraphPanelView: View {
     // MARK: - Commit list
 
     private var commitList: some View {
-        let snapshot = panel.snapshot
+        let snapshot = dataStore.snapshot
         // Precompute once per body pass instead of per commit row:
         // - `lowerQuery` reads the debounced query (see `onChange(of:
-        //   panel.searchQuery)` in `body`) so a fast typist does not
+        //   searchStore.searchQuery)` in `body`) so a fast typist does not
         //   re-filter the snapshot on every keystroke. `subjectHighlight`
         //   derives from it; rows whose subjects are unaffected keep a
         //   stable Equatable input and skip body evaluation.
         // - `occupancy` reads the cached map maintained in
-        //   `onReceive(panel.$snapshot)` so the dict only rebuilds when the
+        //   `onReceive(dataStore.$snapshot)` so the dict only rebuilds when the
         //   snapshot actually changes, not on every unrelated re-render.
         let lowerQuery = debouncedQuery
         let occupancy = cachedOccupancy
         let visibleCommits = visibleCommitsForRender(
             snapshot: snapshot, lowerQuery: lowerQuery
         )
-        let isFilterActive = panel.branchFilter != nil
+        let isFilterActive = searchStore.branchFilter != nil
         let headOutsideFilter = isFilterActive
             && (snapshot?.headSha).map { head in
                 !(snapshot?.commits.contains { $0.sha == head } ?? false)
             } == true
         // Snapshot expansion state at the top so rows receive plain `Bool`
-        // inputs. Reading `panel.expandedCommitSha` directly inside the
+        // inputs. Reading `expansionStore.expandedCommitSha` directly inside the
         // ForEach would pull the entire `panel: ObservableObject` into every
         // row's dependency graph and re-invalidate the whole visible list on
         // any `@Published` change — that's the hazard pattern CLAUDE.md
         // flags, see the "Snapshot boundary for list subtrees" note.
-        let expandedSha = panel.expandedCommitSha
-        let expandedStashRef = panel.expandedStashRef
-        let pinnedStashRef = panel.pinnedStashRef
+        let expandedSha = expansionStore.expandedCommitSha
+        let expandedStashRef = stashStore.expandedStashRef
+        let pinnedStashRef = stashStore.pinnedStashRef
         let headSha = snapshot?.headSha
         let uncommittedCount = snapshot?.uncommittedCount ?? 0
         let themeRevision = self.themeRevision
@@ -720,10 +754,7 @@ struct GitGraphPanelView: View {
         let rowActions = GitGraphRowActions(
             toggleCommitExpanded: { sha in panelRef.toggleExpanded(sha) },
             toggleStashExpanded: { ref in panelRef.toggleExpandedStash(ref) },
-            unpinStash: {
-                panelRef.pinnedStashRef = nil
-                panelRef.expandedStashRef = nil
-            }
+            unpinStash: { panelRef.unpinStash() }
         )
 
         return ScrollViewReader { proxy in
@@ -800,7 +831,7 @@ struct GitGraphPanelView: View {
                     proxy.scrollTo(firstMatch, anchor: .center)
                 }
             }
-            .onReceive(panel.$snapshot) { _ in
+            .onReceive(dataStore.$snapshot) { _ in
                 // When a scroll-to request is parked via `scrollTarget`, jump
                 // there once the snapshot has arrived and the row is visible.
                 if let target = scrollTarget {
@@ -818,7 +849,7 @@ struct GitGraphPanelView: View {
     ) -> [CommitNode] {
         guard let snapshot else { return [] }
         let commits = snapshot.commits
-        guard panel.searchMode == .filter, !lowerQuery.isEmpty else {
+        guard searchStore.searchMode == .filter, !lowerQuery.isEmpty else {
             return commits
         }
         return commits.filter { commitMatches($0, lowerQuery: lowerQuery) }
@@ -883,15 +914,15 @@ struct GitGraphPanelView: View {
 
     private func firstMatchingSha(for query: String) -> String? {
         let lower = query.lowercased()
-        return panel.snapshot?.commits.first(where: { commitMatches($0, lowerQuery: lower) })?.sha
+        return dataStore.snapshot?.commits.first(where: { commitMatches($0, lowerQuery: lower) })?.sha
     }
 
     // MARK: - Stash detail (Task 9.2)
 
     @ViewBuilder
     private func stashDetailView(stashRef: String) -> some View {
-        let files = panel.stashDetailCache[stashRef]
-        let isLoading = panel.loadingStashRef == stashRef && files == nil
+        let files = stashStore.stashDetailCache[stashRef]
+        let isLoading = stashStore.loadingStashRef == stashRef && files == nil
         VStack(alignment: .leading, spacing: 8) {
             if isLoading {
                 HStack(spacing: 8) {
@@ -950,8 +981,8 @@ struct GitGraphPanelView: View {
 
     @ViewBuilder
     private func commitDetailView(for commit: CommitNode) -> some View {
-        let detail = panel.commitDetailCache[commit.sha]
-        let isLoading = panel.loadingDetailSha == commit.sha && detail == nil
+        let detail = expansionStore.commitDetailCache[commit.sha]
+        let isLoading = expansionStore.loadingDetailSha == commit.sha && detail == nil
         VStack(alignment: .leading, spacing: 12) {
             if isLoading {
                 HStack(spacing: 8) {
@@ -1195,7 +1226,7 @@ struct GitGraphPanelView: View {
 
     private var loadMoreButton: some View {
         HStack(spacing: 8) {
-            if panel.isLoadingMore {
+            if dataStore.isLoadingMore {
                 ProgressView().controlSize(.small)
                 Text(String(
                     localized: "gitGraph.loadMore.loading",
