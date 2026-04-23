@@ -58,8 +58,15 @@ struct GitGraphPanelView: View {
     }
 
     @State private var sidebarVisible: Bool = true
-    @State private var branchesExpanded: Bool = true
-    @State private var tagsExpanded: Bool = true
+    // Default-collapse branches and tags: in a repo with hundreds of refs
+    // (cmux develops against a fork with 800+ branches), eagerly expanding
+    // the list materialises a Button per ref, and SwiftUI's per-layout-tick
+    // AccessibilityNode.updateFocusResponder walk goes O(all refs) — a
+    // sample trace showed 99%+ of main-thread time in MultiViewResponder
+    // traversal. Collapsed is the safer default; the user can open the
+    // disclosure and the LazyVStack below renders only the visible window.
+    @State private var branchesExpanded: Bool = false
+    @State private var tagsExpanded: Bool = false
     @State private var stashesExpanded: Bool = true
     @State private var worktreesExpanded: Bool = true
 
@@ -406,8 +413,14 @@ struct GitGraphPanelView: View {
     // MARK: - Refs sidebar
 
     private var refsSidebar: some View {
+        // LazyVStack so only the visible window of the DisclosureGroup
+        // disclosures gets materialised. The *contents* of each
+        // DisclosureGroup are also lazy (see refsSection / stashesSection /
+        // worktreesSection below), so when the user has hundreds of
+        // branches the responder tree only grows by "visible rows", not
+        // "all refs".
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 if let snapshot = dataStore.snapshot {
                     refsSection(
                         title: String(
@@ -445,7 +458,13 @@ struct GitGraphPanelView: View {
     }
 
     private struct RefRowData: Identifiable {
-        let id = UUID()
+        // Stable id derived from the ref name so ForEach + LazyVStack can
+        // diff rows across body passes. `let id = UUID()` (the previous
+        // default) gave each body pass a fresh id per row, which made
+        // ForEach tear down and rebuild every Button — defeating the
+        // LazyVStack's per-row reuse and re-registering every row's
+        // responder on every render.
+        var id: String { label }
         let label: String
         let targetSha: String?
         let isMuted: Bool
@@ -467,28 +486,32 @@ struct GitGraphPanelView: View {
                 .padding(.leading, 24)
                 .padding(.vertical, 3)
             } else {
-                ForEach(snapshot.stashes, id: \.ref) { stash in
-                    let isPinned = stashStore.pinnedStashRef == stash.ref
-                    Button(action: { panel.togglePinnedStash(stash.ref) }) {
-                        HStack(spacing: 4) {
-                            if isPinned {
-                                Image(systemName: "pin.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(theme.refBadgeTag)
+                // LazyVStack inside the disclosure so ForEach only realises
+                // visible rows when the section is expanded.
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(snapshot.stashes, id: \.ref) { stash in
+                        let isPinned = stashStore.pinnedStashRef == stash.ref
+                        Button(action: { panel.togglePinnedStash(stash.ref) }) {
+                            HStack(spacing: 4) {
+                                if isPinned {
+                                    Image(systemName: "pin.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(theme.refBadgeTag)
+                                }
+                                Text("\(stash.ref) — \(stash.subject)")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(isPinned ? theme.foreground : theme.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
-                            Text("\(stash.ref) — \(stash.subject)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(isPinned ? theme.foreground : theme.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 24)
+                            .padding(.trailing, 6)
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 24)
-                        .padding(.trailing, 6)
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         } label: {
@@ -516,41 +539,43 @@ struct GitGraphPanelView: View {
                 .padding(.leading, 24)
                 .padding(.vertical, 3)
             } else {
-                ForEach(snapshot.worktrees, id: \.path) { wt in
-                    let isCurrent = wt.path == panel.workspaceDirectory
-                    let isStale = !FileManager.default.fileExists(atPath: wt.path)
-                    let branchLabel = wt.branch ?? (wt.isDetached ? "(detached)" : "(unknown)")
-                    Button(action: { scrollToSha(wt.headSha) }) {
-                        HStack(spacing: 4) {
-                            if isCurrent {
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(theme.headMarker)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(snapshot.worktrees, id: \.path) { wt in
+                        let isCurrent = wt.path == panel.workspaceDirectory
+                        let isStale = !FileManager.default.fileExists(atPath: wt.path)
+                        let branchLabel = wt.branch ?? (wt.isDetached ? "(detached)" : "(unknown)")
+                        Button(action: { scrollToSha(wt.headSha) }) {
+                            HStack(spacing: 4) {
+                                if isCurrent {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(theme.headMarker)
+                                }
+                                Text("\(branchLabel) — \(wt.path.asDisplayPath)")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(
+                                        isStale
+                                        ? theme.faint
+                                        : (isCurrent ? theme.foreground : theme.secondary)
+                                    )
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
-                            Text("\(branchLabel) — \(wt.path.asDisplayPath)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(
-                                    isStale
-                                    ? theme.faint
-                                    : (isCurrent ? theme.foreground : theme.secondary)
-                                )
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 24)
+                            .padding(.trailing, 6)
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 24)
-                        .padding(.trailing, 6)
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .help(Text(isStale
+                            ? String(
+                                localized: "gitGraph.refs.worktree.stale.tooltip",
+                                defaultValue: "Worktree path no longer exists on disk"
+                            )
+                            : wt.path
+                        ))
                     }
-                    .buttonStyle(.plain)
-                    .help(Text(isStale
-                        ? String(
-                            localized: "gitGraph.refs.worktree.stale.tooltip",
-                            defaultValue: "Worktree path no longer exists on disk"
-                        )
-                        : wt.path
-                    ))
                 }
             }
         } label: {
@@ -598,18 +623,25 @@ struct GitGraphPanelView: View {
                 .padding(.leading, 24)
                 .padding(.vertical, 3)
             } else {
-                ForEach(items) { item in
-                    Button(action: { scrollToSha(item.targetSha) }) {
-                        Text(item.label)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(item.isMuted ? theme.secondary : theme.foreground)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 24)
-                            .padding(.trailing, 6)
-                            .padding(.vertical, 2)
-                            .contentShape(Rectangle())
+                // LazyVStack so only on-screen ref rows materialise. Branch
+                // counts in the 100s (800+ in the cmux fork used to diagnose
+                // the original lag report) otherwise produce a Button per
+                // ref, all of which stay in the SwiftUI responder tree and
+                // dominate the per-tick AccessibilityNode focus walk.
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(items) { item in
+                        Button(action: { scrollToSha(item.targetSha) }) {
+                            Text(item.label)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(item.isMuted ? theme.secondary : theme.foreground)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 24)
+                                .padding(.trailing, 6)
+                                .padding(.vertical, 2)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         } label: {
