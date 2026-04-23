@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>cmux mermaid</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    #diagram {
+      padding: 8px 0;
+      display: block;
+    }
+    #diagram svg {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+    #diagram.fading {
+      opacity: 0.3;
+      transition: opacity 0.15s ease-out;
+    }
+  </style>
+  <script src="mermaid.min.js"></script>
+</head>
+<body>
+  <div id="diagram"></div>
+  <script>
+    (function () {
+      function postBridge(msg) {
+        try {
+          window.webkit.messageHandlers.cmuxMermaid.postMessage(msg);
+        } catch (_) {
+          // bridge unavailable; nothing we can do here
+        }
+      }
+
+      function postRuntimeMissing(message) {
+        postBridge({ type: "error", kind: "runtimeMissing", message: message || "mermaid runtime unavailable" });
+      }
+
+      window.addEventListener("error", function (ev) {
+        if (typeof mermaid === "undefined") {
+          postRuntimeMissing((ev && ev.message) || "mermaid runtime failed to load");
+        }
+      });
+
+      var currentSource = {{SOURCE}};
+      var currentTheme = {{THEME}};
+      var renderSeq = 0;
+
+      function measureAndReport() {
+        var h = Math.ceil(document.body.scrollHeight);
+        postBridge({ type: "rendered", height: h });
+      }
+
+      function renderInternal(source, theme) {
+        if (typeof mermaid === "undefined") {
+          postRuntimeMissing("mermaid runtime missing at render");
+          return;
+        }
+        currentSource = typeof source === "string" ? source : currentSource;
+        currentTheme = (typeof theme === "string" && theme.length > 0) ? theme : (currentTheme || "default");
+        try {
+          mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: currentTheme });
+        } catch (initErr) {
+          postBridge({ type: "error", kind: "syntax", message: (initErr && initErr.message) || "mermaid.initialize failed" });
+          return;
+        }
+        var container = document.getElementById("diagram");
+        if (!container) {
+          postRuntimeMissing("diagram container missing");
+          return;
+        }
+        container.classList.add("fading");
+        renderSeq += 1;
+        var renderId = "cmuxMermaid-" + renderSeq;
+        var p;
+        try {
+          p = mermaid.render(renderId, currentSource);
+        } catch (syncErr) {
+          container.classList.remove("fading");
+          postBridge({ type: "error", kind: "syntax", message: (syncErr && (syncErr.message || syncErr.str)) || String(syncErr) });
+          return;
+        }
+        Promise.resolve(p).then(function (result) {
+          if (!result || typeof result.svg !== "string") {
+            postBridge({ type: "error", kind: "syntax", message: "mermaid returned no svg" });
+            return;
+          }
+          container.innerHTML = result.svg;
+          if (typeof result.bindFunctions === "function") {
+            try { result.bindFunctions(container); } catch (_) { /* ignore bind errors */ }
+          }
+          container.classList.remove("fading");
+          measureAndReport();
+        }).catch(function (err) {
+          container.classList.remove("fading");
+          var message = (err && (err.message || err.str)) || (typeof err === "string" ? err : "mermaid render failed");
+          postBridge({ type: "error", kind: "syntax", message: message });
+        });
+      }
+
+      window.cmuxMermaidRender = function (source, theme) {
+        renderInternal(source, theme);
+      };
+
+      window.cmuxMermaidSetTheme = function (theme) {
+        renderInternal(currentSource, theme);
+      };
+
+      if (typeof mermaid === "undefined") {
+        postRuntimeMissing("mermaid runtime missing at startup");
+      } else {
+        renderInternal(currentSource, currentTheme);
+      }
+    })();
+  </script>
+</body>
+</html>
