@@ -50,6 +50,23 @@ struct GitGraphPanelView: View {
     /// walk every Color in the palette on each `==` call.
     @State private var themeRevision: Int = 0
 
+    /// Debounced mirror of `panel.searchQuery`. The text field binds directly
+    /// to `panel.searchQuery` (keystroke-responsive UX), but rendering and
+    /// Equatable row inputs read `debouncedQuery`, which coalesces rapid
+    /// keystrokes into at most one re-filter every ~150 ms. Without this,
+    /// every keystroke re-ran `visibleCommitsForRender` across the full
+    /// 500-commit snapshot and rebuilt `subjectHighlight` for every matching
+    /// row — with a long search the main thread never caught its breath.
+    @State private var debouncedQuery: String = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
+
+    /// Cached `worktreeOccupancy` result. Derived from the snapshot's
+    /// `worktrees` list and only refreshed in `onReceive(panel.$snapshot)`.
+    /// Replaces the previous per-body-pass rebuild at the top of
+    /// `commitList`, which was visible in sample(1) traces when the panel
+    /// re-rendered on unrelated `@Published` changes.
+    @State private var cachedOccupancy: [String: WorktreeEntry] = [:]
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -70,6 +87,44 @@ struct GitGraphPanelView: View {
             // succession costs nothing; otherwise we reload so the list
             // picks up commits that landed while the panel was hidden.
             panel.refreshIfStale()
+            // Seed the debounced query + occupancy cache so the first render
+            // uses the right values without waiting for a publisher event.
+            debouncedQuery = panel.searchQuery.lowercased()
+            cachedOccupancy = Self.computeOccupancy(
+                workspaceDir: panel.workspaceDirectory,
+                worktrees: panel.snapshot?.worktrees ?? []
+            )
+        }
+        .onDisappear {
+            searchDebounceTask?.cancel()
+            searchDebounceTask = nil
+        }
+        .onChange(of: panel.searchQuery) { _, newValue in
+            // Empty → clear — feels instant so skip the 150 ms wait.
+            // Non-empty → debounce so fast typing does not re-filter the
+            // snapshot on every keystroke. `subjectHighlight` + `isMatch`
+            // in the row Equatable comparison both derive from the
+            // debounced value, so rows unaffected by a keystroke keep a
+            // stable input and skip body evaluation.
+            searchDebounceTask?.cancel()
+            if newValue.isEmpty {
+                debouncedQuery = ""
+                return
+            }
+            searchDebounceTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                if Task.isCancelled { return }
+                debouncedQuery = newValue.lowercased()
+            }
+        }
+        .onReceive(panel.$snapshot) { snapshot in
+            let next = Self.computeOccupancy(
+                workspaceDir: panel.workspaceDirectory,
+                worktrees: snapshot?.worktrees ?? []
+            )
+            if next != cachedOccupancy {
+                cachedOccupancy = next
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -85,6 +140,23 @@ struct GitGraphPanelView: View {
             theme = GitGraphTheme.make(from: GhosttyConfig.load(useCache: false))
             themeRevision &+= 1
         }
+    }
+
+    /// Builds the "branch → worktree entry" map consumed by commit-row ref
+    /// badges. Skips the workspace's own worktree; only *other* worktrees
+    /// mark a branch as occupied. Static so it can be invoked from
+    /// `onAppear` / `onReceive` without capturing `self`.
+    private static func computeOccupancy(
+        workspaceDir: String,
+        worktrees: [WorktreeEntry]
+    ) -> [String: WorktreeEntry] {
+        var map: [String: WorktreeEntry] = [:]
+        for wt in worktrees where wt.path != workspaceDir {
+            if let branch = wt.branch {
+                map[branch] = wt
+            }
+        }
+        return map
     }
 
     // MARK: - Toolbar
@@ -473,22 +545,6 @@ struct GitGraphPanelView: View {
         .padding(.horizontal, 8)
     }
 
-    // MARK: - Worktree occupancy (Task 10.2)
-
-    /// Maps `branchName -> WorktreeEntry` for branches checked out in
-    /// worktrees other than this panel's own. Used by `refBadge` to stamp
-    /// the `⎘` indicator and by tooltips to show the occupying path.
-    private func worktreeOccupancy() -> [String: WorktreeEntry] {
-        guard let worktrees = panel.snapshot?.worktrees else { return [:] }
-        var map: [String: WorktreeEntry] = [:]
-        for wt in worktrees where wt.path != panel.workspaceDirectory {
-            if let branch = wt.branch {
-                map[branch] = wt
-            }
-        }
-        return map
-    }
-
     @ViewBuilder
     private func refsSection(
         title: String,
@@ -622,12 +678,16 @@ struct GitGraphPanelView: View {
     private var commitList: some View {
         let snapshot = panel.snapshot
         // Precompute once per body pass instead of per commit row:
-        // - `lowerQuery` was being computed in every `commitMatchesSearch` and
-        //   every `attributedSubject` call (see sample #3, #5).
-        // - `occupancy` was being rebuilt per row even though it's constant for
-        //   the whole snapshot (sample #2).
-        let lowerQuery = panel.searchQuery.lowercased()
-        let occupancy = worktreeOccupancy()
+        // - `lowerQuery` reads the debounced query (see `onChange(of:
+        //   panel.searchQuery)` in `body`) so a fast typist does not
+        //   re-filter the snapshot on every keystroke. `subjectHighlight`
+        //   derives from it; rows whose subjects are unaffected keep a
+        //   stable Equatable input and skip body evaluation.
+        // - `occupancy` reads the cached map maintained in
+        //   `onReceive(panel.$snapshot)` so the dict only rebuilds when the
+        //   snapshot actually changes, not on every unrelated re-render.
+        let lowerQuery = debouncedQuery
+        let occupancy = cachedOccupancy
         let visibleCommits = visibleCommitsForRender(
             snapshot: snapshot, lowerQuery: lowerQuery
         )
@@ -729,7 +789,11 @@ struct GitGraphPanelView: View {
                     }
                 }
             }
-            .onChange(of: panel.searchQuery) { _, newValue in
+            .onChange(of: debouncedQuery) { _, newValue in
+                // Fires after the 150 ms debounce (or immediately on clear);
+                // scrolling on every keystroke felt twitchy and made the
+                // list jump around while the user was still composing a
+                // query.
                 guard !newValue.isEmpty,
                       let firstMatch = firstMatchingSha(for: newValue) else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
