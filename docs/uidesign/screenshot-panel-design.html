@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>cmux Right Sidebar — Screenshot Panel</title>
+    <style>
+      :root {
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+      html, body {
+        margin: 0; padding: 24px; background: #1a1a1a; color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+        font-size: 13px; line-height: 1.35;
+      }
+      .stage { display: grid; grid-template-columns: repeat(3, 300px); gap: 28px; align-items: start; }
+      .card { display: flex; flex-direction: column; gap: 8px; }
+      .caption {
+        color: rgba(255,255,255,0.55);
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 600;
+      }
+      .caption .sub {
+        color: rgba(255,255,255,0.4);
+        text-transform: none; letter-spacing: 0; font-weight: 500;
+      }
+
+      /* ---- theme-aware sidebar (dark monokai-like) ---- */
+      .sidebar {
+        --bg: #0f1420;
+        --fg: #e2e8f0;
+        --accent: #1f6feb;
+        --warn: #f4bf75;
+        --danger: #f87171;
+        background: var(--bg);
+        color: var(--fg);
+        border-radius: 10px;
+        padding: 0 0 8px 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        overflow: hidden;
+      }
+
+      /* ---- mode chip bar (mimics existing Files/Sessions) ---- */
+      .mode-bar {
+        display: flex; gap: 4px; padding: 4px 6px;
+        align-items: center;
+      }
+      .mode-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 8px; border-radius: 6px;
+        font-size: 11px; font-weight: 500;
+        color: color-mix(in srgb, var(--fg) 55%, var(--bg));
+        cursor: default;
+      }
+      .mode-chip.is-active {
+        color: var(--fg);
+        background: color-mix(in srgb, var(--fg) 10%, transparent);
+      }
+      .mode-chip .icon { font-size: 11px; }
+      .divider { height: 1px; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+
+      /* ---- header (path + quick actions) ---- */
+      .panel-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 10px;
+        color: color-mix(in srgb, var(--fg) 55%, var(--bg));
+      }
+      .panel-header .path {
+        font-family: var(--mono); font-size: 11px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        flex: 1;
+      }
+      .panel-header .actions { display: flex; gap: 2px; }
+      .panel-header .icon-btn {
+        width: 22px; height: 22px; border-radius: 4px;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: color-mix(in srgb, var(--fg) 65%, var(--bg));
+        cursor: default;
+      }
+      .panel-header .icon-btn:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+
+      /* ---- preview area ---- */
+      .preview {
+        margin: 4px 10px 8px;
+        aspect-ratio: 4 / 3;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--fg) 8%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+        position: relative;
+        overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .preview .img {
+        width: 100%; height: 100%; object-fit: contain;
+      }
+      .preview.empty {
+        color: color-mix(in srgb, var(--fg) 40%, var(--bg));
+        font-family: var(--mono); font-size: 11px;
+      }
+      .preview-caption {
+        position: absolute; left: 8px; right: 8px; bottom: 4px;
+        font-family: var(--mono); font-size: 10px;
+        color: color-mix(in srgb, var(--fg) 55%, var(--bg));
+        display: flex; justify-content: space-between;
+        background: linear-gradient(to top, rgba(15, 20, 32, 0.8), transparent);
+        padding: 4px 0 2px;
+      }
+
+      /* ---- list view ---- */
+      .list {
+        padding: 2px 4px 0;
+        display: flex; flex-direction: column;
+      }
+      .list-item {
+        display: grid; grid-template-columns: 32px 1fr auto; gap: 8px;
+        padding: 4px 6px;
+        border-radius: 5px;
+        align-items: center;
+        cursor: default;
+      }
+      .list-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+      .list-item.is-selected {
+        background: color-mix(in srgb, var(--accent) 80%, var(--bg));
+      }
+      .list-item .thumb {
+        width: 32px; height: 24px;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--fg) 15%, var(--bg));
+        object-fit: cover;
+      }
+      .list-item .name {
+        font-family: var(--mono); font-size: 11px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: var(--fg);
+      }
+      .list-item.is-selected .name { color: #fff; }
+      .list-item .mtime {
+        font-family: var(--mono); font-size: 10px;
+        color: color-mix(in srgb, var(--fg) 55%, var(--bg));
+      }
+      .list-item.is-selected .mtime { color: rgba(255,255,255,0.75); }
+
+      /* ---- grid view ---- */
+      .grid {
+        padding: 4px 8px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+        gap: 4px;
+      }
+      .grid-cell {
+        position: relative; aspect-ratio: 4/3;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg) 15%, var(--bg));
+        overflow: hidden;
+        cursor: default;
+      }
+      .grid-cell:hover { outline: 1px solid color-mix(in srgb, var(--fg) 30%, transparent); outline-offset: -1px; }
+      .grid-cell.is-selected {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+      .grid-cell img { width: 100%; height: 100%; object-fit: cover; }
+
+      /* ---- view-mode toggle ---- */
+      .view-toggle {
+        display: inline-flex;
+        border-radius: 5px;
+        background: color-mix(in srgb, var(--fg) 6%, transparent);
+        padding: 1px;
+      }
+      .view-toggle button {
+        all: unset;
+        width: 22px; height: 20px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 4px;
+        font-size: 11px;
+        color: color-mix(in srgb, var(--fg) 60%, var(--bg));
+        cursor: default;
+      }
+      .view-toggle button.is-active {
+        background: color-mix(in srgb, var(--fg) 12%, transparent);
+        color: var(--fg);
+      }
+
+      /* ---- empty state ---- */
+      .empty-state {
+        padding: 24px 16px;
+        text-align: center;
+        color: color-mix(in srgb, var(--fg) 50%, var(--bg));
+      }
+      .empty-state .title { font-size: 13px; color: var(--fg); margin-bottom: 4px; }
+      .empty-state .hint { font-size: 11px; font-family: var(--mono); }
+
+      /* placeholder thumbnail colors */
+      .tn-a { background: linear-gradient(135deg, #2a4365 0%, #3182ce 100%); }
+      .tn-b { background: linear-gradient(135deg, #553c9a 0%, #805ad5 100%); }
+      .tn-c { background: linear-gradient(135deg, #276749 0%, #38a169 100%); }
+      .tn-d { background: linear-gradient(135deg, #744210 0%, #d69e2e 100%); }
+      .tn-e { background: linear-gradient(135deg, #742a2a 0%, #e53e3e 100%); }
+      .tn-f { background: linear-gradient(135deg, #2c5282 0%, #4fd1c5 100%); }
+      .tn-g { background: linear-gradient(135deg, #97266d 0%, #ed64a6 100%); }
+      .tn-h { background: linear-gradient(135deg, #2d3748 0%, #718096 100%); }
+
+      /* fake screenshot preview canvas */
+      .fake-ss {
+        width: 100%; height: 100%;
+        background: #1a202c;
+        color: #e2e8f0;
+        font-family: var(--mono); font-size: 9px;
+        padding: 8px;
+        box-sizing: border-box;
+        white-space: pre;
+        overflow: hidden;
+      }
+
+      /* context menu */
+      .context-menu {
+        position: absolute; top: 60%; left: 40%;
+        background: #23272f;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px;
+        padding: 4px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+        font-size: 11px;
+        color: #e2e8f0;
+        z-index: 10;
+      }
+      .context-menu .item {
+        padding: 4px 12px;
+        border-radius: 3px; cursor: default;
+        white-space: nowrap;
+      }
+      .context-menu .item:hover { background: rgba(31,111,235,0.8); color: #fff; }
+      .context-menu .separator { height: 1px; background: rgba(255,255,255,0.1); margin: 3px 0; }
+      .context-menu .item.danger:hover { background: rgba(248,113,113,0.8); }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+
+      <!-- ========== Variant A: Grid thumbnails (default) ========== -->
+      <div class="card">
+        <div class="caption">A — Grid thumbnails <span class="sub">(default view)</span></div>
+        <div class="sidebar">
+          <div class="mode-bar">
+            <span class="mode-chip"><span class="icon">📁</span>Files</span>
+            <span class="mode-chip"><span class="icon">💬</span>Sessions</span>
+            <span class="mode-chip is-active"><span class="icon">📸</span>Shots</span>
+            <span style="flex:1"></span>
+            <span class="view-toggle">
+              <button class="is-active" title="Grid">▦</button>
+              <button title="List">☰</button>
+            </span>
+          </div>
+          <div class="divider"></div>
+          <div class="panel-header">
+            <span class="icon">📷</span>
+            <span class="path">~/Pictures/螢幕載圖</span>
+            <span class="actions">
+              <span class="icon-btn" title="Open folder">⎋</span>
+              <span class="icon-btn" title="Refresh">⟳</span>
+            </span>
+          </div>
+
+          <div class="preview">
+            <div class="fake-ss">$ npm run build
+> cmux@0.63.2 build
+> tsc -p tsconfig.json && vite build
+
+✓ built in 3.42s
+
+▲  Build complete
+   dist/index.html           0.45 kB
+   dist/assets/index.css     4.21 kB
+   dist/assets/index-X.js  153.80 kB
+
+✓ ready in 3.5s</div>
+            <div class="preview-caption">
+              <span>截圖 10.30.54</span>
+              <span>1 min ago</span>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="grid-cell is-selected"><div class="fake-ss" style="background:#1a202c">$ npm run build…</div></div>
+            <div class="grid-cell tn-a"></div>
+            <div class="grid-cell tn-b"></div>
+            <div class="grid-cell tn-c"></div>
+            <div class="grid-cell tn-d"></div>
+            <div class="grid-cell tn-e"></div>
+            <div class="grid-cell tn-f"></div>
+            <div class="grid-cell tn-g"></div>
+            <div class="grid-cell tn-h"></div>
+            <div class="grid-cell tn-a"></div>
+            <div class="grid-cell tn-b"></div>
+            <div class="grid-cell tn-c"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Variant B: List view ========== -->
+      <div class="card">
+        <div class="caption">B — List view <span class="sub">(filename + mtime)</span></div>
+        <div class="sidebar">
+          <div class="mode-bar">
+            <span class="mode-chip"><span class="icon">📁</span>Files</span>
+            <span class="mode-chip"><span class="icon">💬</span>Sessions</span>
+            <span class="mode-chip is-active"><span class="icon">📸</span>Shots</span>
+            <span style="flex:1"></span>
+            <span class="view-toggle">
+              <button title="Grid">▦</button>
+              <button class="is-active" title="List">☰</button>
+            </span>
+          </div>
+          <div class="divider"></div>
+          <div class="panel-header">
+            <span class="icon">📷</span>
+            <span class="path">~/Pictures/螢幕載圖</span>
+            <span class="actions">
+              <span class="icon-btn" title="Open folder">⎋</span>
+              <span class="icon-btn" title="Refresh">⟳</span>
+            </span>
+          </div>
+
+          <div class="preview">
+            <div class="fake-ss">$ npm run build
+> cmux@0.63.2 build
+> tsc -p tsconfig.json && vite build
+
+✓ built in 3.42s
+
+▲  Build complete
+   dist/index.html           0.45 kB
+   dist/assets/index.css     4.21 kB
+   dist/assets/index-X.js  153.80 kB</div>
+            <div class="preview-caption">
+              <span>截圖 10.30.54</span>
+              <span>1 min ago</span>
+            </div>
+          </div>
+
+          <div class="list">
+            <div class="list-item is-selected">
+              <div class="thumb fake-ss">build…</div>
+              <div class="name">截圖 10.30.54.png</div>
+              <div class="mtime">1m</div>
+            </div>
+            <div class="list-item">
+              <div class="thumb tn-a"></div>
+              <div class="name">截圖 10.27.05.png</div>
+              <div class="mtime">4m</div>
+            </div>
+            <div class="list-item">
+              <div class="thumb tn-b"></div>
+              <div class="name">截圖 10.26.24.png</div>
+              <div class="mtime">5m</div>
+            </div>
+            <div class="list-item">
+              <div class="thumb tn-c"></div>
+              <div class="name">截圖 10.12.54.png</div>
+              <div class="mtime">19m</div>
+            </div>
+            <div class="list-item">
+              <div class="thumb tn-d"></div>
+              <div class="name">截圖 04.34.51.png</div>
+              <div class="mtime">6h</div>
+            </div>
+            <div class="list-item">
+              <div class="thumb tn-e"></div>
+              <div class="name">截圖 04.34.32.png</div>
+              <div class="mtime">6h</div>
+            </div>
+            <div class="list-item">
+              <div class="thumb tn-f"></div>
+              <div class="name">截圖 04.29.57.png</div>
+              <div class="mtime">6h</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Variant C: empty + right-click menu ========== -->
+      <div class="card">
+        <div class="caption">C — Empty state + Right-click menu</div>
+        <div class="sidebar" style="position: relative;">
+          <div class="mode-bar">
+            <span class="mode-chip"><span class="icon">📁</span>Files</span>
+            <span class="mode-chip"><span class="icon">💬</span>Sessions</span>
+            <span class="mode-chip is-active"><span class="icon">📸</span>Shots</span>
+            <span style="flex:1"></span>
+            <span class="view-toggle">
+              <button class="is-active" title="Grid">▦</button>
+              <button title="List">☰</button>
+            </span>
+          </div>
+          <div class="divider"></div>
+          <div class="panel-header">
+            <span class="icon">📷</span>
+            <span class="path">~/Pictures/螢幕載圖</span>
+            <span class="actions">
+              <span class="icon-btn" title="Open folder">⎋</span>
+              <span class="icon-btn" title="Refresh">⟳</span>
+            </span>
+          </div>
+
+          <div class="preview">
+            <div class="fake-ss">$ npm run build…</div>
+            <div class="preview-caption">
+              <span>截圖 10.30.54</span>
+              <span>1 min ago</span>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="grid-cell is-selected"><div class="fake-ss">build…</div></div>
+            <div class="grid-cell tn-a"></div>
+            <div class="grid-cell tn-b"></div>
+            <div class="grid-cell tn-c"></div>
+            <div class="grid-cell tn-d"></div>
+            <div class="grid-cell tn-e"></div>
+            <div class="grid-cell tn-f"></div>
+            <div class="grid-cell tn-g"></div>
+          </div>
+
+          <div class="context-menu">
+            <div class="item">📋  Copy to pasteboard</div>
+            <div class="item">⇥   Paste to terminal (⏎)</div>
+            <div class="separator"></div>
+            <div class="item">🔍  Reveal in Finder</div>
+            <div class="item">✎   Rename…</div>
+            <div class="separator"></div>
+            <div class="item danger">🗑  Move to Trash</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

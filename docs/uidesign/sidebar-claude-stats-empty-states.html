@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>cmux Sidebar — unfocused + narrow variants</title>
+    <style>
+      :root {
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --bg: #0f1420;
+        --fg: #e2e8f0;
+        --accent: #1f6feb;
+        --ansi-red: #f92672;
+        --ansi-yellow: #f4bf75;
+        --ansi-blue: #66d9ef;
+        --fg-dim: color-mix(in srgb, var(--fg) 72%, var(--bg));
+        --fg-muted: color-mix(in srgb, var(--fg) 48%, var(--bg));
+        --fg-faint: color-mix(in srgb, var(--fg) 32%, var(--bg));
+        --divider: color-mix(in srgb, var(--fg) 14%, transparent);
+        --bar-track: color-mix(in srgb, var(--fg) 10%, transparent);
+      }
+      html, body {
+        margin: 0; padding: 24px; background: #1a1a1a; color: var(--fg);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+        font-size: 13px; line-height: 1.35;
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: repeat(4, auto);
+        gap: 24px; align-items: start;
+      }
+      .card { display: flex; flex-direction: column; gap: 8px; }
+      .caption {
+        color: rgba(255,255,255,0.55);
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 600;
+      }
+      .caption .sub {
+        color: rgba(255,255,255,0.4);
+        text-transform: none; letter-spacing: 0; font-weight: 500;
+      }
+      .sidebar {
+        width: 220px;
+        background: var(--bg);
+        border-radius: 10px;
+        padding: 8px 10px 12px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      }
+      .sidebar.narrow { width: 150px; }
+      .titlebar-dots { display: flex; gap: 6px; padding: 6px 6px 10px; }
+      .titlebar-dots span { width: 10px; height: 10px; border-radius: 50%; }
+      .titlebar-dots span:nth-child(1) { background: #ff5f57; }
+      .titlebar-dots span:nth-child(2) { background: #febc2e; }
+      .titlebar-dots span:nth-child(3) { background: #28c840; }
+
+      .workspace-row { padding: 10px 10px 11px; border-radius: 8px; color: var(--fg); }
+      .workspace-row + .workspace-row { margin-top: 2px; }
+      .workspace-row.is-selected {
+        background: color-mix(in srgb, var(--accent) 80%, var(--bg));
+      }
+      .workspace-row.is-selected .claude-stats {
+        --fg-dim: color-mix(in srgb, var(--fg) 85%, var(--accent));
+        --fg-faint: color-mix(in srgb, var(--fg) 55%, var(--accent));
+        --divider: color-mix(in srgb, var(--fg) 25%, transparent);
+        --bar-track: color-mix(in srgb, var(--fg) 22%, transparent);
+        --bar-default: #fff;
+      }
+
+      .row-head { display: flex; align-items: center; gap: 8px; }
+      .row-head .pin { opacity: 0.9; }
+      .row-head .name { font-weight: 700; font-size: 14px; }
+      .row-meta { margin-top: 4px; color: var(--fg-dim); font-size: 12px; font-family: var(--mono); }
+      .row-meta .sep { margin: 0 6px; opacity: 0.55; }
+
+      .claude-stats {
+        margin-top: 10px; padding-top: 10px;
+        border-top: 1px solid var(--divider);
+        font-family: var(--mono); font-size: 11px; line-height: 1.4;
+      }
+      .stats-tokens {
+        display: flex; justify-content: space-between;
+        padding-bottom: 6px;
+      }
+      .stats-tokens .l { color: var(--fg-dim); }
+      .stats-tokens .r { color: var(--fg-faint); }
+      .stats-row {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 2px 0;
+      }
+      .stats-row .label { color: var(--fg-faint); }
+      .stats-row .value { color: var(--fg-dim); }
+      .stats-row .value .extra { color: var(--fg-faint); margin-left: 6px; font-size: 10px; }
+      .bar { height: 5px; background: var(--bar-track); border-radius: 999px; overflow: hidden; }
+      .bar > div { height: 100%; border-radius: 999px; background: var(--bar-default, var(--ansi-blue)); }
+      .bar.warn > div { background: var(--ansi-yellow); }
+      .bar.danger > div { background: var(--ansi-red); }
+
+      /* Inline stats */
+      .stats-inline {
+        margin-top: 4px; font-family: var(--mono); font-size: 11px;
+        color: var(--fg-faint);
+        display: flex; gap: 8px; align-items: center;
+      }
+      .stats-inline .pair .v { color: var(--fg-dim); }
+      .stats-inline .pair.warn .v { color: var(--ansi-yellow); }
+      .stats-inline .model { color: var(--fg-dim); }
+
+      /* Unfocused - no session variants */
+      .empty-dash { color: var(--fg-faint); font-family: var(--mono); font-size: 11px; margin-top: 4px; letter-spacing: 2px; }
+      .empty-dot { color: var(--fg-faint); font-family: var(--mono); font-size: 10px; margin-top: 4px; }
+      .empty-hint {
+        color: var(--fg-faint);
+        font-family: var(--mono); font-size: 10px;
+        margin-top: 4px; display: flex; gap: 6px; align-items: center;
+      }
+      .empty-hint .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--fg-faint); }
+
+      /* Narrow layout variant */
+      .narrow-stats-row {
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        gap: 6px; padding: 2px 0;
+        align-items: center;
+      }
+      .narrow-stats-row .tail {
+        grid-column: 2;
+        display: flex; justify-content: space-between;
+        font-size: 10px; color: var(--fg-faint);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+
+      <!-- ========== Variant A: current behavior (blank) ========== -->
+      <div class="card">
+        <div class="caption">A — Current: blank <span class="sub">(no Claude session)</span></div>
+        <div class="sidebar">
+          <div class="titlebar-dots"><span></span><span></span><span></span></div>
+          <div class="workspace-row is-selected">
+            <div class="row-head"><span class="pin">📌</span><span class="name">cmux</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/cmux</div>
+            <div class="claude-stats">
+              <div class="stats-tokens"><span class="l">tokens 448.4K</span><span class="r">session 689.4K</span></div>
+              <div class="stats-row"><span class="label">ctx</span><div class="bar warn"><div style="width:69%"></div></div><span class="value">69%<span class="extra">compact 0×</span></span></div>
+              <div class="stats-row"><span class="label">5h</span><div class="bar"><div style="width:21%"></div></div><span class="value">21%<span class="extra">1h28m</span></span></div>
+              <div class="stats-row"><span class="label">7d</span><div class="bar"><div style="width:48%"></div></div><span class="value">48%<span class="extra">20h28m</span></span></div>
+            </div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">Helios</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/Helios</div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">DeviceHUB</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/DeviceHub</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Variant B: em-dash placeholder ========== -->
+      <div class="card">
+        <div class="caption">B — Dash placeholder</div>
+        <div class="sidebar">
+          <div class="titlebar-dots"><span></span><span></span><span></span></div>
+          <div class="workspace-row is-selected">
+            <div class="row-head"><span class="pin">📌</span><span class="name">cmux</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/cmux</div>
+            <div class="claude-stats">
+              <div class="stats-tokens"><span class="l">tokens 448.4K</span><span class="r">session 689.4K</span></div>
+              <div class="stats-row"><span class="label">ctx</span><div class="bar warn"><div style="width:69%"></div></div><span class="value">69%<span class="extra">compact 0×</span></span></div>
+              <div class="stats-row"><span class="label">5h</span><div class="bar"><div style="width:21%"></div></div><span class="value">21%<span class="extra">1h28m</span></span></div>
+              <div class="stats-row"><span class="label">7d</span><div class="bar"><div style="width:48%"></div></div><span class="value">48%<span class="extra">20h28m</span></span></div>
+            </div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">Helios</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/Helios</div>
+            <div class="empty-dash">— · — · —</div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">DeviceHUB</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/DeviceHub</div>
+            <div class="empty-dash">— · — · —</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Variant C: "no claude" hint ========== -->
+      <div class="card">
+        <div class="caption">C — Idle hint</div>
+        <div class="sidebar">
+          <div class="titlebar-dots"><span></span><span></span><span></span></div>
+          <div class="workspace-row is-selected">
+            <div class="row-head"><span class="pin">📌</span><span class="name">cmux</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/cmux</div>
+            <div class="claude-stats">
+              <div class="stats-tokens"><span class="l">tokens 448.4K</span><span class="r">session 689.4K</span></div>
+              <div class="stats-row"><span class="label">ctx</span><div class="bar warn"><div style="width:69%"></div></div><span class="value">69%<span class="extra">compact 0×</span></span></div>
+              <div class="stats-row"><span class="label">5h</span><div class="bar"><div style="width:21%"></div></div><span class="value">21%<span class="extra">1h28m</span></span></div>
+              <div class="stats-row"><span class="label">7d</span><div class="bar"><div style="width:48%"></div></div><span class="value">48%<span class="extra">20h28m</span></span></div>
+            </div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">Helios</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/Helios</div>
+            <div class="empty-hint"><span class="dot"></span><span>claude idle</span></div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">DeviceHUB</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/DeviceHub</div>
+            <div class="empty-hint"><span class="dot"></span><span>claude idle</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Variant D: last-known + dim ========== -->
+      <div class="card">
+        <div class="caption">D — Last-known (dim)</div>
+        <div class="sidebar">
+          <div class="titlebar-dots"><span></span><span></span><span></span></div>
+          <div class="workspace-row is-selected">
+            <div class="row-head"><span class="pin">📌</span><span class="name">cmux</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/cmux</div>
+            <div class="claude-stats">
+              <div class="stats-tokens"><span class="l">tokens 448.4K</span><span class="r">session 689.4K</span></div>
+              <div class="stats-row"><span class="label">ctx</span><div class="bar warn"><div style="width:69%"></div></div><span class="value">69%<span class="extra">compact 0×</span></span></div>
+              <div class="stats-row"><span class="label">5h</span><div class="bar"><div style="width:21%"></div></div><span class="value">21%<span class="extra">1h28m</span></span></div>
+              <div class="stats-row"><span class="label">7d</span><div class="bar"><div style="width:48%"></div></div><span class="value">48%<span class="extra">20h28m</span></span></div>
+            </div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">Helios</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/Helios</div>
+            <div class="stats-inline" style="opacity:0.55">
+              <span class="model">son</span>
+              <span>·</span>
+              <span class="pair"><span>ctx</span> <span class="v">30%</span></span>
+              <span class="pair"><span>5h</span> <span class="v">21%</span></span>
+              <span style="font-size: 9px; margin-left:auto;">(3m ago)</span>
+            </div>
+          </div>
+          <div class="workspace-row">
+            <div class="row-head"><span class="pin">📌</span><span class="name">DeviceHUB</span></div>
+            <div class="row-meta">main*<span class="sep">·</span>~/Documents/github/DeviceHub</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== Narrow variants (150 px sidebar) ==================== -->
+
+      <div class="card" style="grid-column: 1 / span 2;">
+        <div class="caption">Narrow A — current layout <span class="sub">(overflow cuts values)</span></div>
+        <div class="sidebar narrow">
+          <div class="titlebar-dots"><span></span><span></span><span></span></div>
+          <div class="workspace-row is-selected">
+            <div class="row-head"><span class="pin">📌</span><span class="name">cmux</span></div>
+            <div class="row-meta">main*</div>
+            <div class="claude-stats">
+              <div class="stats-tokens"><span class="l">tokens 448K</span><span class="r">689K</span></div>
+              <div class="stats-row"><span class="label">ctx</span><div class="bar warn"><div style="width:69%"></div></div><span class="value">69%<span class="extra">0×</span></span></div>
+              <div class="stats-row"><span class="label">5h</span><div class="bar"><div style="width:21%"></div></div><span class="value">21%<span class="extra">1h28m</span></span></div>
+              <div class="stats-row"><span class="label">7d</span><div class="bar"><div style="width:48%"></div></div><span class="value">48%<span class="extra">20h</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: 3 / span 2;">
+        <div class="caption">Narrow B — two-line value <span class="sub">(% + extra stacked)</span></div>
+        <div class="sidebar narrow">
+          <div class="titlebar-dots"><span></span><span></span><span></span></div>
+          <div class="workspace-row is-selected">
+            <div class="row-head"><span class="pin">📌</span><span class="name">cmux</span></div>
+            <div class="row-meta">main*</div>
+            <div class="claude-stats">
+              <div class="stats-tokens"><span class="l">tokens 448K</span><span class="r">689K</span></div>
+
+              <div class="narrow-stats-row">
+                <span class="label" style="color:var(--fg-faint)">ctx</span>
+                <div class="bar warn"><div style="width:69%"></div></div>
+              </div>
+              <div class="narrow-stats-row"><span></span>
+                <div class="tail"><span>69%</span><span>compact 0×</span></div>
+              </div>
+
+              <div class="narrow-stats-row">
+                <span class="label" style="color:var(--fg-faint)">5h</span>
+                <div class="bar"><div style="width:21%"></div></div>
+              </div>
+              <div class="narrow-stats-row"><span></span>
+                <div class="tail"><span>21%</span><span>1h28m</span></div>
+              </div>
+
+              <div class="narrow-stats-row">
+                <span class="label" style="color:var(--fg-faint)">7d</span>
+                <div class="bar"><div style="width:48%"></div></div>
+              </div>
+              <div class="narrow-stats-row"><span></span>
+                <div class="tail"><span>48%</span><span>20h28m</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </body>
+</html>
