@@ -1314,7 +1314,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         isTerminatingApp = true
-        _ = saveSessionSnapshot(includeScrollback: true, removeWhenEmpty: false)
+        // Intentionally do NOT save here. `applicationWillTerminate` is
+        // guaranteed to run before the process exits (for `.terminateNow`
+        // and for `.terminateLater` + `reply(true)`) and already calls
+        // `saveSessionSnapshot(includeScrollback: true, …)`. When we also
+        // saved here, and `shouldWriteSessionSnapshotSynchronously` returns
+        // true while `isTerminatingApp` is set, every sizeable scrollback
+        // got serialized to disk twice on the main thread. That double
+        // sync write is what made clicking Quit feel like nothing
+        // happened — the dialog closed immediately but the app stayed on
+        // screen for 5–10 s while the second save drained.
 
         // Tagged DEV builds are ephemeral, skip quit confirmation entirely.
         if SocketControlSettings.isTaggedDevBuild() {
