@@ -50,8 +50,10 @@
         }
       });
 
-      var currentSource = {{SOURCE}};
-      var currentTheme = {{THEME}};
+      // Initial values are empty; Swift calls window.cmuxMermaidRender(source, theme)
+      // after the page finishes loading (WKNavigationDelegate didFinish).
+      var currentSource = "";
+      var currentTheme = "default";
       var renderSeq = 0;
 
       function measureAndReport() {
@@ -116,9 +118,9 @@
 
       if (typeof mermaid === "undefined") {
         postRuntimeMissing("mermaid runtime missing at startup");
-      } else {
-        renderInternal(currentSource, currentTheme);
       }
+      // No auto-render on load — Swift triggers the first render by calling
+      // window.cmuxMermaidRender(source, theme) in WKNavigationDelegate.didFinish.
     })();
   </script>
 </body>

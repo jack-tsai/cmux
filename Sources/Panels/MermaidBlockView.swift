@@ -84,9 +84,17 @@ private struct MermaidWebViewRepresentable: NSViewRepresentable {
         context.coordinator.lastAppliedSource = source
         context.coordinator.lastAppliedTheme = theme
 
-        let html = MermaidRenderer.htmlDocument(source: source, theme: theme)
-        let baseURL = MermaidRenderer.mermaidResourcesDirectory() ?? Bundle.main.bundleURL
-        webView.loadHTMLString(html, baseURL: baseURL)
+        // loadFileURL is the supported API for granting the WebView permission
+        // to read sibling resources (mermaid.min.js) from the bundle directory.
+        // loadHTMLString with a file:// baseURL does NOT grant that access, which
+        // silently breaks mermaid rendering (nothing shows, no error surfaces).
+        if let templateURL = MermaidRenderer.templateURL(),
+           let mermaidDir = MermaidRenderer.mermaidResourcesDirectory() {
+            webView.loadFileURL(templateURL, allowingReadAccessTo: mermaidDir)
+        } else {
+            let html = MermaidRenderer.htmlDocument(source: source, theme: theme)
+            webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
+        }
         context.coordinator.resetWatchdogForNewNavigation()
         return webView
     }

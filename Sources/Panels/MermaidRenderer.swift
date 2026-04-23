@@ -30,11 +30,17 @@ enum MermaidRenderer {
     }
 
     static func escape(source: String) -> String {
+        // JSON output for [source] is ["..."] — strip the array brackets AND
+        // the JSON-added surrounding quotes so we get just the escaped inner
+        // content. manualEscape returns the inner content directly. Both paths
+        // feed into a single outer-quote wrap at the end, avoiding the
+        // double-wrap bug that turned `"dark"` into `""dark""` and broke the
+        // JS `var x = {{SOURCE}};` substitution downstream.
         var encoded: String
         if let data = try? JSONSerialization.data(withJSONObject: [source], options: []),
            let json = String(data: data, encoding: .utf8),
-           json.count >= 2 {
-            let trimmed = String(json.dropFirst().dropLast())
+           json.count >= 4 {
+            let trimmed = String(json.dropFirst(2).dropLast(2))
             encoded = trimmed
         } else {
             encoded = manualEscape(source)
@@ -65,6 +71,23 @@ enum MermaidRenderer {
 
     static func mermaidResourcesDirectory(bundle: Bundle = .main) -> URL? {
         return bundle.url(forResource: mermaidDirectoryResourceName, withExtension: nil)
+    }
+
+    static func templateURL(bundle: Bundle = .main) -> URL? {
+        if let url = bundle.url(
+            forResource: templateResourceName,
+            withExtension: templateResourceExtension,
+            subdirectory: mermaidDirectoryResourceName
+        ) {
+            return url
+        }
+        if let mermaidDir = bundle.url(forResource: mermaidDirectoryResourceName, withExtension: nil) {
+            let candidate = mermaidDir.appendingPathComponent("\(templateResourceName).\(templateResourceExtension)")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
     }
 
     static let fallbackTemplate: String = """
