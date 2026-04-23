@@ -61,7 +61,7 @@ private struct ScreenshotListRow: View {
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
             }
-            .frame(width: 48, height: 36)
+            .frame(width: 72, height: 54)
 
             Text(snapshot.filename)
                 .font(.system(size: 11, design: .monospaced))
@@ -100,7 +100,7 @@ private struct ScreenshotListRow: View {
             ScreenshotThumbnailCache.shared.requestThumbnail(
                 for: snapshot.url,
                 mtime: snapshot.mtime,
-                pixelSize: 128
+                pixelSize: 192
             ) { image in
                 self.image = image
                 continuation.resume()
