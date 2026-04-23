@@ -54,13 +54,13 @@
 
 ## 6. Debug menu + settings UI + settings.json sync（decisions：「預設路徑 fallback chain」）
 
-- [ ] 6.0 新增 `Sources/ScreenshotPanelSettingsFileStore.swift`：仿 `KeyboardShortcutSettingsFileStore` 模式實作 `~/.config/cmux/settings.json` 的 `screenshotPanel` 區塊讀寫 — `load()` 在 `applicationDidFinishLaunching` 早期呼叫，從 JSON 匯入 `path`、`viewMode`、`showsRightSidebarTab` 到 UserDefaults；`write(path:)` / `write(viewMode:)` / `write(showsTab:)` / `clearPath()` 作為 Debug menu 寫入的 atomic 出口，必須保留其它 top-level keys（例如 `keyboardShortcuts`）。malformed JSON 走 `dlog` 不 crash。對應 spec `screenshot-panel-settings` 的 `settings.json sync for screenshotPanel.* keys` 全部 scenarios。
-- [ ] 6.0.1 新增 `cmuxTests/ScreenshotPanelSettingsFileStoreTests.swift`：fixture 以 temp HOME 注入，驗 ① 啟動讀 JSON → UserDefaults ② Debug-menu 寫入會保留其它 top-level keys ③ malformed JSON 時 UserDefaults 不變 ④ Reset 只移除 `path`；對應 spec `screenshot-panel-settings` 的 settings.json sync 全部 scenarios。
+- [ ] 6.0 擴充 `Sources/KeyboardShortcutSettingsFileStore.swift` 內的 `CmuxSettingsFileStore`（既有通用 settings.json 檔 store）：① 在 `supportedSettingsJSONPaths` 加入 `screenshotPanel.path`、`screenshotPanel.viewMode`、`screenshotPanel.showsRightSidebarTab`；② 新增 `parseScreenshotPanelSection(_:sourcePath:snapshot:)` 解析三個 sub-key 並把值寫進 `snapshot.managedUserDefaults[<UserDefaultsKey>]`；③ 在頂層 `parseSettings` 的 section dispatcher 加入 `"screenshotPanel"` case；④ Debug menu 的寫入沿用既有 `CmuxSettingsFileStore` ManagedSettingsValue 寫回 API，自動得到「保留其它 top-level keys + atomic write + malformed JSON 不 crash」。**Reuse rationale**：spec 原要求新建 `ScreenshotPanelSettingsFileStore`，但 cmux 既有 `CmuxSettingsFileStore` 已是通用 store（1839 行、支援 90+ key），只需註冊 key 即得 spec 全部 scenarios；新建獨立 store 會重複實作 atomic write / watcher / backup / schema 驗證。對應 spec `screenshot-panel-settings` 的 `settings.json sync for screenshotPanel.* keys` 全部 scenarios。
+- [ ] 6.0.1 新增 `cmuxTests/ScreenshotPanelSettingsSyncTests.swift`：fixture 以 temp `primaryPath` 注入一個 `CmuxSettingsFileStore`（`init(primaryPath:fallbackPath:...)`），驗 ① 啟動讀 JSON → UserDefaults ② 透過 store write 寫入會保留其它 top-level keys（fixture 先寫 `keyboardShortcuts`）③ malformed JSON 時 UserDefaults 不變且 `dlog` 有 warning ④ Reset（移除 `screenshotPanel.path`）後其它 `screenshotPanel.*` sub-keys 保留；對應 spec `screenshot-panel-settings` 的 settings.json sync 全部 scenarios。
 - [ ] 6.1 修改 `Sources/cmuxApp.swift` 的 SidebarDebugView（或 new `ScreenshotPanelDebugView`）：加 `GroupBox("Screenshot Panel")` 含：
   - 顯示 current resolved path（read-only label）
-  - `Choose Folder…` Button → `NSOpenPanel(canChooseDirectories: true, canChooseFiles: false, allowsMultipleSelection: false)` → 透過 `ScreenshotPanelSettingsFileStore.write(path:)` 同時寫 UserDefaults 與 `settings.json`
-  - `Reset to Auto-detect` Button → `ScreenshotPanelSettingsFileStore.clearPath()`（移除 UserDefaults 與 `settings.json.screenshotPanel.path`）
-  - `Show Shots tab in sidebar` Toggle bind 到 `ScreenshotPanelSettingsFileStore.write(showsTab:)`；read 時仍走 `@AppStorage("screenshotPanel.showsRightSidebarTab")`
+  - `Choose Folder…` Button → `NSOpenPanel(canChooseDirectories: true, canChooseFiles: false, allowsMultipleSelection: false)` → 呼叫 `CmuxSettingsFileStore.shared` 的 managed-settings 寫入 API 把 `screenshotPanel.path` 同時寫 UserDefaults 與 `settings.json`
+  - `Reset to Auto-detect` Button → 透過同一 API 移除 `screenshotPanel.path`
+  - `Show Shots tab in sidebar` Toggle bind 到 `@AppStorage("screenshotPanel.showsRightSidebarTab")`；改值時 store 觀察者會自動 mirror 到 settings.json
   對應 spec `screenshot-panel-settings` 的 Debug menu folder picker + Reset to Auto-detect scenarios。
 
 ## 7. i18n + pbxproj + build（decisions：無）

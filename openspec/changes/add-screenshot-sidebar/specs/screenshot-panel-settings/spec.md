@@ -91,7 +91,7 @@ Debug menu SHALL provide a `Reset to Auto-detect` action that clears `screenshot
 - **On every write** via the Debug menu or other UI (path picker, view-mode toggle, Shots-tab toggle): the value SHALL be written to both `UserDefaults.standard` AND `~/.config/cmux/settings.json`. The JSON file SHALL be written atomically (`Data.write(to:options:.atomic)`) and MUST preserve any existing top-level keys belonging to other settings domains (e.g. keyboard shortcuts under `keyboardShortcuts`).
 - **Reset to Auto-detect**: SHALL remove the `path` sub-key both from UserDefaults and from the `screenshotPanel` object in `settings.json` (leaving other `screenshotPanel` sub-keys intact).
 
-The pattern SHALL follow `KeyboardShortcutSettingsFileStore` (existing precedent for `~/.config/cmux/settings.json` portability in cmux).
+The implementation SHALL extend cmux's existing `CmuxSettingsFileStore` (defined in `Sources/KeyboardShortcutSettingsFileStore.swift`) rather than introducing a new dedicated file store. Specifically, the three `screenshotPanel.*` paths SHALL be registered in `CmuxSettingsFileStore.supportedSettingsJSONPaths`, and a `parseScreenshotPanelSection` SHALL be added that maps the JSON sub-keys to `snapshot.managedUserDefaults` entries. This inherits atomic writes, watcher-based bidirectional sync, and the "preserve other top-level keys" invariant from the existing store.
 
 #### Scenario: settings.json has screenshotPanel block on startup
 
