@@ -7,6 +7,11 @@ import SwiftUI
 struct ScreenshotGalleryActions {
     let onSelect: (UUID) -> Void
     let onActivate: (UUID) -> Void
+    let onCopyToPasteboard: (URL) -> Void
+    let onRevealInFinder: (URL) -> Void
+    let onTrash: (URL) -> Void
+    /// Caller reports rename result back to UI — nil success, non-nil failure message.
+    let onRename: (URL, String) -> String?
 }
 
 // MARK: - Grid view
@@ -84,6 +89,12 @@ private struct ScreenshotGridCell: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { actions.onActivate(snapshot.id) }
         .onTapGesture { actions.onSelect(snapshot.id) }
+        .contextMenu { ScreenshotEntryContextMenu(url: snapshot.url, id: snapshot.id, actions: actions) }
+        .draggable(ScreenshotDragPayload(url: snapshot.url)) {
+            Image(systemName: "photo")
+                .font(.system(size: 24))
+                .foregroundColor(theme.faint)
+        }
         .task(id: ScreenshotThumbnailCache.cacheKey(url: snapshot.url, mtime: snapshot.mtime)) {
             await loadThumbnail()
         }

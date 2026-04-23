@@ -40,17 +40,17 @@
 
 ## 5. 互動：單擊/雙擊/拖拽/右鍵（decisions：「雙擊 paste 走 TerminalImageTransfer 既有管線」「Drag-out」「右鍵 context menu 動作」）
 
-- [ ] 5.1 單擊 vs 雙擊分流：`onTapGesture(count: 2)` 先、`onTapGesture()` 後（SwiftUI 會自動延後單擊以避開雙擊）；單擊 → `selectedId = entry.id`、雙擊 → `selectedId = entry.id` + 觸發 paste；對應 spec `screenshot-panel-view` 的 Single-click selects, double-click pastes scenarios。
-- [ ] 5.2 修改 `Sources/TerminalImageTransfer.swift`：新增 `@MainActor static func pasteFileURL(_ fileURL: URL, to workspace: Workspace, tabManager: TabManager) throws`；內部組 `NSPasteboard` + 寫 `public.file-url` + image UTI → 呼叫現有 `prepare(...)` → dispatch；對應 spec `screenshot-terminal-paste` 的 pasteFileURL helper on TerminalImageTransfer scenarios。
-- [ ] 5.3 在 `Workspace.swift` 新增 `@Published var lastFocusedTerminalPanelId: UUID?`，在現有 `focusPanel` 路徑中當 panel 是 `TerminalPanel` 時更新；`closePanel` 關的是 lastFocusedTerminal 時 fallback 到 panels 中最近被 focus 的另一個 TerminalPanel；對應 spec `screenshot-terminal-paste` 的 Workspace tracks last-focused terminal panel scenarios。
-- [ ] 5.4 `pasteFileURL` 的 target resolution：先 focused terminal → 再 lastFocusedTerminalPanelId → nil 則 throw `noFocusedTerminal`；對應 spec `screenshot-terminal-paste` 的 Focused terminal resolution with fallback scenarios。
-- [ ] 5.5 [P] 新增 `cmuxTests/ScreenshotTerminalPasteTests.swift`：mock workspace + mock focused panel，驗 target resolution 3 條 scenario；pasteboard 組裝 → `prepare()` plan 輸出等於從系統 pasteboard 貼圖一致（value comparison）；對應 spec `screenshot-terminal-paste` 的 pasteFileURL + Focused terminal resolution + Context-menu Copy 的 scenarios。
-- [ ] 5.6 Drag-out：`draggable` modifier 提供 `NSItemProvider`，同時 register `.fileURL`（`loadObject(ofClass: URL.self)`）與 `.image`（PNG data）；對應 spec `screenshot-panel-view` 的 Drag-out emits NSItemProvider + spec `screenshot-terminal-paste` 的 Drag-out uses same pipeline scenarios。
-- [ ] 5.7 右鍵 context menu：SwiftUI `.contextMenu { ... }` 五項（Copy / Paste / Reveal / Rename / Trash）照 spec 順序；對應 spec `screenshot-panel-view` 的 Right-click context menu with five actions scenarios。
-- [ ] 5.8 Copy 動作：`NSPasteboard.general.clearContents()` + 寫 `public.file-url` + 寫 image UTI；對應 spec `screenshot-terminal-paste` 的 Context-menu Copy writes both fileURL and image scenarios。
-- [ ] 5.9 Reveal in Finder 動作：`NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: "")`。
-- [ ] 5.10 Rename 動作：inline TextField overlay；Enter 提交 → `FileManager.default.moveItem(at: old, to: new)`（檢查 destination 不存在，已存在則 inline error toast）；Esc / blur 取消；對應 spec `screenshot-panel-view` 的 Rename scenarios。
-- [ ] 5.11 Move to Trash 動作：`FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)`；失敗顯示 inline toast 不彈 alert；對應 spec `screenshot-panel-view` 的 Move to Trash scenarios。
+- [x] 0 單擊 vs 雙擊分流：`onTapGesture(count: 2)` 先、`onTapGesture()` 後（SwiftUI 會自動延後單擊以避開雙擊）；單擊 → `selectedId = entry.id`、雙擊 → `selectedId = entry.id` + 觸發 paste；對應 spec `screenshot-panel-view` 的 Single-click selects, double-click pastes scenarios。
+- [x] 0 修改 `Sources/TerminalImageTransfer.swift`：新增 `@MainActor static func pasteFileURL(_ fileURL: URL, to workspace: Workspace, tabManager: TabManager) throws`；內部組 `NSPasteboard` + 寫 `public.file-url` + image UTI → 呼叫現有 `prepare(...)` → dispatch；對應 spec `screenshot-terminal-paste` 的 pasteFileURL helper on TerminalImageTransfer scenarios。
+- [x] 0 在 `Workspace.swift` 新增 `@Published var lastFocusedTerminalPanelId: UUID?`，在現有 `focusPanel` 路徑中當 panel 是 `TerminalPanel` 時更新；`closePanel` 關的是 lastFocusedTerminal 時 fallback 到 panels 中最近被 focus 的另一個 TerminalPanel；對應 spec `screenshot-terminal-paste` 的 Workspace tracks last-focused terminal panel scenarios。
+- [x] 0 `pasteFileURL` 的 target resolution：先 focused terminal → 再 lastFocusedTerminalPanelId → nil 則 throw `noFocusedTerminal`；對應 spec `screenshot-terminal-paste` 的 Focused terminal resolution with fallback scenarios。
+- [x] 0 [P] 新增 `cmuxTests/ScreenshotTerminalPasteTests.swift`：mock workspace + mock focused panel，驗 target resolution 3 條 scenario；pasteboard 組裝 → `prepare()` plan 輸出等於從系統 pasteboard 貼圖一致（value comparison）；對應 spec `screenshot-terminal-paste` 的 pasteFileURL + Focused terminal resolution + Context-menu Copy 的 scenarios。
+- [x] 0 Drag-out：`draggable` modifier 提供 `NSItemProvider`，同時 register `.fileURL`（`loadObject(ofClass: URL.self)`）與 `.image`（PNG data）；對應 spec `screenshot-panel-view` 的 Drag-out emits NSItemProvider + spec `screenshot-terminal-paste` 的 Drag-out uses same pipeline scenarios。
+- [x] 0 右鍵 context menu：SwiftUI `.contextMenu { ... }` 五項（Copy / Paste / Reveal / Rename / Trash）照 spec 順序；對應 spec `screenshot-panel-view` 的 Right-click context menu with five actions scenarios。
+- [x] 0 Copy 動作：`NSPasteboard.general.clearContents()` + 寫 `public.file-url` + 寫 image UTI；對應 spec `screenshot-terminal-paste` 的 Context-menu Copy writes both fileURL and image scenarios。
+- [x] 0 Reveal in Finder 動作：`NSWorkspace.shared.selectFile(entry.url.path, inFileViewerRootedAtPath: "")`。
+- [x] 0 Rename 動作：inline TextField overlay；Enter 提交 → `FileManager.default.moveItem(at: old, to: new)`（檢查 destination 不存在，已存在則 inline error toast）；Esc / blur 取消；對應 spec `screenshot-panel-view` 的 Rename scenarios。
+- [x] 0 Move to Trash 動作：`FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)`；失敗顯示 inline toast 不彈 alert；對應 spec `screenshot-panel-view` 的 Move to Trash scenarios。
 
 ## 6. Debug menu + settings UI + settings.json sync（decisions：「預設路徑 fallback chain」）
 

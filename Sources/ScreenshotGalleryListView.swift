@@ -85,6 +85,11 @@ private struct ScreenshotListRow: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { actions.onActivate(snapshot.id) }
         .onTapGesture { actions.onSelect(snapshot.id) }
+        .contextMenu { ScreenshotEntryContextMenu(url: snapshot.url, id: snapshot.id, actions: actions) }
+        .draggable(ScreenshotDragPayload(url: snapshot.url)) {
+            Text(snapshot.filename)
+                .font(.system(size: 11, design: .monospaced))
+        }
         .task(id: ScreenshotThumbnailCache.cacheKey(url: snapshot.url, mtime: snapshot.mtime)) {
             await loadThumbnail()
         }

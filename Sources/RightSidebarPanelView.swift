@@ -54,6 +54,11 @@ struct RightSidebarPanelView: View {
     @ObservedObject var fileExplorerState: FileExplorerState
     @ObservedObject var sessionIndexStore: SessionIndexStore
     let onResumeSession: ((SessionEntry) -> Void)?
+    /// Paste a screenshot into the currently-focused terminal. Wired from
+    /// ContentView (which owns workspace/tabManager) via
+    /// `TerminalImageTransferPlanner.pasteFileURL`. Default is a no-op so
+    /// existing call sites compile; the real app must provide it.
+    var onScreenshotPaste: ((URL) -> Void)? = nil
 
     @AppStorage(ScreenshotPanelSettingsKey.showsRightSidebarTab)
     private var showsScreenshotsTab: Bool = true
@@ -129,7 +134,10 @@ struct RightSidebarPanelView: View {
                         : fileExplorerStore.rootPath
                 }
         case .screenshots:
-            ScreenshotPanelView(store: screenshotStore)
+            ScreenshotPanelView(
+                store: screenshotStore,
+                onActivate: onScreenshotPaste ?? { _ in }
+            )
         }
     }
 }

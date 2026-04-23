@@ -47,8 +47,35 @@ struct ScreenshotPanelView: View {
                 if let entry = store.entries.first(where: { $0.id == id }) {
                     onActivate(entry.url)
                 }
+            },
+            onCopyToPasteboard: { url in
+                ScreenshotEntryActionsFactory.copyToPasteboard(url: url)
+            },
+            onRevealInFinder: { url in
+                ScreenshotEntryActionsFactory.revealInFinder(url: url)
+            },
+            onTrash: { url in
+                if let message = ScreenshotEntryActionsFactory.trash(url: url) {
+                    presentTransientError(message)
+                } else {
+                    store.reload()
+                }
+            },
+            onRename: { url, newName in
+                let error = ScreenshotEntryActionsFactory.rename(url: url, to: newName)
+                if error == nil { store.reload() }
+                return error
             }
         )
+    }
+
+    @MainActor
+    private func presentTransientError(_ message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     var body: some View {

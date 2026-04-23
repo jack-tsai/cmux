@@ -4780,6 +4780,15 @@ final class TerminalSurface: Identifiable, ObservableObject {
         writeTextData(data, to: surface)
     }
 
+    /// Run a pasteboard through the standard drop pipeline — equivalent to the
+    /// user dragging the same content from Finder onto this terminal.
+    /// Used by `TerminalImageTransferPlanner.pasteFileURL` (screenshot panel
+    /// double-click / Enter / context-menu Paste).
+    @discardableResult
+    func performImageTransferPaste(_ pasteboard: NSPasteboard) -> Bool {
+        surfaceView.insertDroppedPasteboard(pasteboard)
+    }
+
     @discardableResult
     func sendNamedKey(_ keyName: String) -> Bool {
         guard let event = pendingKeyEvent(for: keyName) else { return false }
@@ -8612,8 +8621,12 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         )
     }
 
+    /// Accepts a pasteboard (file URL / image data / text) and runs it through
+    /// the standard drop pipeline — identical to dragging the same content from
+    /// Finder onto the terminal. Used by both AppKit drag delegate and the
+    /// screenshot panel's pasteFileURL helper.
     @discardableResult
-    fileprivate func insertDroppedPasteboard(_ pasteboard: NSPasteboard) -> Bool {
+    func insertDroppedPasteboard(_ pasteboard: NSPasteboard) -> Bool {
         executePreparedImageTransfer(
             TerminalImageTransferPlanner.prepare(
                 pasteboard: pasteboard,

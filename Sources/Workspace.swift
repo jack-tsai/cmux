@@ -6566,6 +6566,36 @@ final class Workspace: Identifiable, ObservableObject {
         return panel
     }
 
+    /// The most-recent-focused *still-open* terminal panel (if any). Screenshot-
+    /// panel paste falls back to this when the current `focusedPanelId` is not
+    /// a TerminalPanel. Unlike `focusedTerminalPanel`, this persists across
+    /// sidebar / browser pane focus changes.
+    var lastFocusedTerminalPanel: TerminalPanel? {
+        guard let panelId = lastFocusedTerminalPanelId,
+              let panel = panels[panelId] as? TerminalPanel else {
+            return nil
+        }
+        return panel
+    }
+
+    fileprivate func recordTerminalPanelFocus(_ panelId: UUID) {
+        terminalFocusHistory.removeAll(where: { $0 == panelId })
+        terminalFocusHistory.append(panelId)
+        if terminalFocusHistory.count > Workspace.terminalFocusHistoryLimit {
+            terminalFocusHistory.removeFirst(
+                terminalFocusHistory.count - Workspace.terminalFocusHistoryLimit
+            )
+        }
+        lastFocusedTerminalPanelId = panelId
+    }
+
+    fileprivate func forgetTerminalPanelFocus(_ panelId: UUID) {
+        terminalFocusHistory.removeAll(where: { $0 == panelId })
+        if lastFocusedTerminalPanelId == panelId {
+            lastFocusedTerminalPanelId = terminalFocusHistory.last
+        }
+    }
+
     func effectiveSelectedPanelId(inPane paneId: PaneID) -> UUID? {
         bonsplitController.selectedTab(inPane: paneId).flatMap { panelIdFromSurfaceId($0.id) }
     }
@@ -6585,6 +6615,17 @@ final class Workspace: Identifiable, ObservableObject {
     @Published private(set) var tmuxWorkspaceFlashPanelId: UUID?
     @Published private(set) var tmuxWorkspaceFlashReason: WorkspaceAttentionFlashReason?
     @Published private(set) var tmuxWorkspaceFlashToken: UInt64 = 0
+
+    /// Most-recently-focused terminal panel id. Used by pasteFileURL (screenshot
+    /// panel double-click) to pick a target when `focusedPanelId` is not a
+    /// TerminalPanel (e.g. the sidebar search field has focus). Spec:
+    /// `screenshot-terminal-paste` → "Workspace tracks last-focused terminal panel".
+    @Published private(set) var lastFocusedTerminalPanelId: UUID?
+    /// Recent-terminal history (oldest first) kept bounded; on panel close we
+    /// pop the closed id and reset `lastFocusedTerminalPanelId` to `.last`.
+    private var terminalFocusHistory: [UUID] = []
+    private static let terminalFocusHistoryLimit = 10
+
     private var manualUnreadMarkedAt: [UUID: Date] = [:]
     nonisolated private static let manualUnreadFocusGraceInterval: TimeInterval = 0.2
     nonisolated private static let manualUnreadClearDelayAfterFocusFlash: TimeInterval = 0.2
@@ -9378,6 +9419,9 @@ final class Workspace: Identifiable, ObservableObject {
     /// Close a panel.
     /// Returns true when a bonsplit tab close request was issued.
     func closePanel(_ panelId: UUID, force: Bool = false) -> Bool {
+        if panels[panelId] is TerminalPanel {
+            forgetTerminalPanelFocus(panelId)
+        }
         if let tabId = surfaceIdFromPanelId(panelId) {
             if force {
                 forceCloseTabIds.insert(tabId)
@@ -10134,6 +10178,12 @@ final class Workspace: Identifiable, ObservableObject {
                 reason: "workspace.focusPanel.terminal",
                 terminalFocusPanelId: panelId
             )
+        }
+
+        // Track recent-terminal-panel history so screenshot-panel paste has a
+        // fallback target when the sidebar / browser has focus at paste time.
+        if panels[panelId] is TerminalPanel {
+            recordTerminalPanelFocus(panelId)
         }
     }
 

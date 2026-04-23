@@ -1,6 +1,12 @@
 import Foundation
 import AppKit
 
+/// Errors raised by `TerminalImageTransferPlanner.pasteFileURL`.
+/// Spec: `screenshot-terminal-paste` → "Focused terminal resolution with fallback".
+enum TerminalImageTransferError: Error, Equatable {
+    case noFocusedTerminal
+}
+
 enum TerminalImageTransferMode {
     case paste
     case drop
@@ -337,6 +343,68 @@ enum TerminalImageTransferPlanner {
         case .failure(let error):
             onFailure(error)
         }
+    }
+}
+
+// MARK: - Screenshot panel entry point
+
+extension TerminalImageTransferPlanner {
+    /// Resolve the target terminal within `workspace`: focused first, then
+    /// last-focused as a fallback. Nil means neither is available — callers
+    /// SHALL throw `TerminalImageTransferError.noFocusedTerminal`.
+    /// Spec: `screenshot-terminal-paste` → "Focused terminal resolution with fallback".
+    @MainActor
+    static func resolvePasteTargetPanel(in workspace: Workspace) -> TerminalPanel? {
+        if let focused = workspace.focusedTerminalPanel {
+            return focused
+        }
+        return workspace.lastFocusedTerminalPanel
+    }
+
+    /// Build a pasteboard with the file URL + raw image bytes under the UTI
+    /// matching the file's extension. Used by both `pasteFileURL` and the
+    /// context-menu Copy-to-pasteboard action.
+    /// Spec: `screenshot-terminal-paste` → "Context-menu Copy writes both fileURL and image".
+    static func writeScreenshotEntry(
+        fileURL: URL,
+        to pasteboard: NSPasteboard
+    ) {
+        pasteboard.clearContents()
+        pasteboard.writeObjects([fileURL as NSURL])
+        // Best-effort: attach the decoded image bytes so pasteboard consumers
+        // that want raw pixels (Preview's "New from Clipboard") find them.
+        if let data = try? Data(contentsOf: fileURL),
+           let ext = fileURL.pathExtension.isEmpty ? nil : fileURL.pathExtension {
+            let uti = NSPasteboard.PasteboardType(rawValue: "public.\(ext.lowercased())")
+            pasteboard.setData(data, forType: uti)
+        }
+    }
+
+    /// Paste a file URL (usually a screenshot) into the focused terminal in
+    /// `workspace` via the exact same pipeline as a ⌘V / drag-from-Finder.
+    /// Spec: `screenshot-terminal-paste` → "pasteFileURL helper on TerminalImageTransfer".
+    ///
+    /// - Throws `TerminalImageTransferError.noFocusedTerminal` when neither
+    ///   `focusedTerminalPanel` nor `lastFocusedTerminalPanel` is available;
+    ///   no pasteboard is written and no upload starts.
+    @MainActor
+    static func pasteFileURL(
+        _ fileURL: URL,
+        to workspace: Workspace,
+        tabManager: TabManager
+    ) throws {
+        guard let target = resolvePasteTargetPanel(in: workspace) else {
+            throw TerminalImageTransferError.noFocusedTerminal
+        }
+
+        let pasteboardName = NSPasteboard.Name("cmux.screenshotPanel.paste.\(UUID().uuidString)")
+        let pasteboard = NSPasteboard(name: pasteboardName)
+        writeScreenshotEntry(fileURL: fileURL, to: pasteboard)
+
+        // Dispatch via the existing drop pipeline. Handles local insert and
+        // SSH/remote upload uniformly — matches ⌘V-of-Finder behavior.
+        _ = target.surface.performImageTransferPaste(pasteboard)
+        _ = tabManager // reserved for future routing (focus change, etc.)
     }
 }
 
