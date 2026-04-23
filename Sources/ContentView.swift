@@ -6352,6 +6352,10 @@ struct ContentView: View {
             return String(localized: "commandPalette.kind.markdown", defaultValue: "Markdown")
         case .gitGraph:
             return String(localized: "commandPalette.kind.gitGraph", defaultValue: "Git Graph")
+        case .filePreview:
+            return String(localized: "commandPalette.kind.filePreview", defaultValue: "File Preview")
+        case .diff:
+            return String(localized: "commandPalette.kind.diff", defaultValue: "Diff")
         }
     }
 
@@ -6365,6 +6369,10 @@ struct ContentView: View {
             return ["markdown", "note", "preview"]
         case .gitGraph:
             return ["git", "graph", "history", "commits", "branches"]
+        case .filePreview:
+            return ["file", "preview", "viewer", "read"]
+        case .diff:
+            return ["diff", "changes", "patch", "git"]
         }
     }
 
@@ -10245,6 +10253,15 @@ struct VerticalTabsSidebar: View {
     @State private var terminalScrollBarVisibilityGeneration: UInt64 = 0
     @AppStorage(WorkspacePresentationModeSettings.modeKey)
     private var workspacePresentationMode = WorkspacePresentationModeSettings.defaultMode.rawValue
+    @AppStorage(SidebarClaudeStatsSettings.key)
+    private var showClaudeStatsInSidebar = SidebarClaudeStatsSettings.defaultValue
+    @AppStorage("sidebar.claudeSetupCardDismissed") private var claudeSetupCardDismissed = false
+    @Environment(\.colorScheme) private var colorScheme
+    @StateObject private var claudeStatsStore = ClaudeStatsStore.shared
+    @State private var claudeStatsTheme: ClaudeStatsTheme = ClaudeStatsTheme.make(from: GhosttyConfig.load())
+    @State private var claudeConnectionStatus: ClaudeSettingsInspector.ConnectionStatus = .fileMissing
+    @State private var claudeSetupError: String?
+    private let claudeSettingsInspector = ClaudeSettingsInspector()
 
     /// Space at top of sidebar for traffic light buttons
     private let trafficLightPadding: CGFloat = 28
@@ -10336,39 +10353,46 @@ struct VerticalTabsSidebar: View {
                                 let frozenPresentation = frozenTabItemPresentation?.tabId == tab.id
                                     ? frozenTabItemPresentation
                                     : nil
-                                TabItemView(
-                                    tabManager: tabManager,
-                                    notificationStore: notificationStore,
-                                    tab: tab,
-                                    index: index,
-                                    isActive: tabManager.selectedTabId == tab.id,
-                                    workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
-                                        at: index,
-                                        workspaceCount: workspaceCount
-                                    ),
-                                    workspaceShortcutModifierSymbol: workspaceNumberShortcut.numberedDigitHintPrefix,
-                                    canCloseWorkspace: canCloseWorkspace,
-                                    accessibilityWorkspaceCount: workspaceCount,
-                                    unreadCount: frozenPresentation?.unreadCount ?? liveUnreadCount,
-                                    latestNotificationText: frozenPresentation?.latestNotificationText ?? liveLatestNotificationText,
-                                    rowSpacing: tabRowSpacing,
-                                    setSelectionToTabs: { selection = .tabs },
-                                    selectedTabIds: $selectedTabIds,
-                                    lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
-                                    showsModifierShortcutHints: frozenPresentation?.showsModifierShortcutHints ?? liveShowsModifierShortcutHints,
-                                    dragAutoScrollController: dragAutoScrollController,
-                                    draggedTabId: $draggedTabId,
-                                    dropIndicator: $dropIndicator,
-                                    contextMenuWorkspaceIds: contextMenuWorkspaceIds,
-                                    remoteContextMenuWorkspaceIds: remoteContextMenuWorkspaceIds,
-                                    allRemoteContextMenuTargetsConnecting: allRemoteContextMenuTargetsConnecting,
-                                    allRemoteContextMenuTargetsDisconnected: allRemoteContextMenuTargetsDisconnected,
-                                    allContextMenuWorkspacesHideTerminalScrollBar: allContextMenuWorkspacesHideTerminalScrollBar,
-                                    settings: tabItemSettings,
-                                    livePresentation: livePresentation,
-                                    frozenPresentation: $frozenTabItemPresentation
-                                )
-                                .equatable()
+                                let isFocused = tabManager.selectedTabId == tab.id
+                                VStack(spacing: 0) {
+                                    TabItemView(
+                                        tabManager: tabManager,
+                                        notificationStore: notificationStore,
+                                        tab: tab,
+                                        index: index,
+                                        isActive: isFocused,
+                                        workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
+                                            at: index,
+                                            workspaceCount: workspaceCount
+                                        ),
+                                        workspaceShortcutModifierSymbol: workspaceNumberShortcut.numberedDigitHintPrefix,
+                                        canCloseWorkspace: canCloseWorkspace,
+                                        accessibilityWorkspaceCount: workspaceCount,
+                                        unreadCount: frozenPresentation?.unreadCount ?? liveUnreadCount,
+                                        latestNotificationText: frozenPresentation?.latestNotificationText ?? liveLatestNotificationText,
+                                        rowSpacing: tabRowSpacing,
+                                        setSelectionToTabs: { selection = .tabs },
+                                        selectedTabIds: $selectedTabIds,
+                                        lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
+                                        showsModifierShortcutHints: frozenPresentation?.showsModifierShortcutHints ?? liveShowsModifierShortcutHints,
+                                        dragAutoScrollController: dragAutoScrollController,
+                                        draggedTabId: $draggedTabId,
+                                        dropIndicator: $dropIndicator,
+                                        contextMenuWorkspaceIds: contextMenuWorkspaceIds,
+                                        remoteContextMenuWorkspaceIds: remoteContextMenuWorkspaceIds,
+                                        allRemoteContextMenuTargetsConnecting: allRemoteContextMenuTargetsConnecting,
+                                        allRemoteContextMenuTargetsDisconnected: allRemoteContextMenuTargetsDisconnected,
+                                        allContextMenuWorkspacesHideTerminalScrollBar: allContextMenuWorkspacesHideTerminalScrollBar,
+                                        settings: tabItemSettings,
+                                        livePresentation: livePresentation,
+                                        frozenPresentation: $frozenTabItemPresentation
+                                    )
+                                    .equatable()
+
+                                    // Task 4.4: Claude stats footer (block or inline).
+                                    claudeStatsRowFooter(for: tab, isFocused: isFocused)
+                                }
+                                .modifier(UnselectedWorkspaceRowFrame(isFocused: isFocused))
                             }
                         }
                         .padding(.vertical, 8)
@@ -10416,6 +10440,16 @@ struct VerticalTabsSidebar: View {
             }
             SidebarFooter(updateViewModel: updateViewModel, fileExplorerState: fileExplorerState, onSendFeedback: onSendFeedback)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: Notification.Name("com.cmuxterm.themes.reload-config")
+            )
+        ) { _ in
+            claudeStatsTheme = ClaudeStatsTheme.make(from: GhosttyConfig.load(useCache: false))
+        }
+        .onAppear {
+            claudeConnectionStatus = claudeSettingsInspector.classifyConnectionStatus()
         }
         .accessibilityIdentifier("Sidebar")
         .ignoresSafeArea()
@@ -10499,6 +10533,139 @@ struct VerticalTabsSidebar: View {
     private func debugShortSidebarTabId(_ id: UUID?) -> String {
         guard let id else { return "nil" }
         return String(id.uuidString.prefix(5))
+    }
+
+    // MARK: - Unselected row frame modifier nested definition is placed OUTSIDE
+    // the struct (see file-scope declaration below) so it is not captured by
+    // TabItemView's Equatable comparator.
+
+    /// Task 4.4 helper: decide and render the Claude stats footer below a
+    /// workspace row. Returns EmptyView when the feature is off, when no
+    /// snapshot exists for the relevant surface, or when the workspace has
+    /// no terminal panels.
+    @ViewBuilder
+    private func claudeStatsRowFooter(for tab: Tab, isFocused: Bool) -> some View {
+        if showClaudeStatsInSidebar {
+            if isFocused {
+                focusedFooter(for: tab)
+            } else {
+                unfocusedFooter(for: tab)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func focusedFooter(for tab: Tab) -> some View {
+        if let focusedPanelId = tab.focusedPanelId,
+           let snap = claudeStatsStore.snapshots[focusedPanelId],
+           let block = ClaudeStatsAggregator.block(for: snap) {
+            let compactCount = claudeStatsStore.compactCount(for: snap.sessionId)
+            selectedFooterContainer {
+                ClaudeStatsBlockView(
+                    snapshot: ClaudeStatsAggregator.blockWithCompactCount(block, compactCount: compactCount),
+                    theme: claudeStatsTheme,
+                    isOnSelectedBackground: true
+                )
+            }
+        } else if !claudeSetupCardDismissed && claudeConnectionStatus != .connected {
+            // Spec `claude-statusline-setup` Sidebar setup card on the focused
+            // workspace row — shown when not connected and not dismissed.
+            selectedFooterContainer {
+                ClaudeStatsSetupCardView(
+                    theme: claudeStatsTheme,
+                    onAutoConfigure: runAutoConfigure,
+                    onManual: { claudeSetupCardDismissed = true },
+                    onDismiss: { claudeSetupCardDismissed = true },
+                    errorMessage: claudeSetupError
+                )
+            }
+        }
+    }
+
+    /// Wraps focused-row footer content in a RoundedRectangle tinted the same
+    /// color as the TabItemView's selected fill, so the stats block visually
+    /// belongs to the selected workspace row (mock: stats sit inside the blue
+    /// highlight). Uses flat top corners + offset -2 so it reads as a
+    /// continuation of the row above, not a separate card.
+    @ViewBuilder
+    private func selectedFooterContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 10)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                UnevenRoundedRectangle(
+                    cornerRadii: .init(topLeading: 0, bottomLeading: 8,
+                                       bottomTrailing: 8, topTrailing: 0),
+                    style: .continuous
+                )
+                .fill(Color(nsColor: sidebarSelectedWorkspaceBackgroundNSColor(for: colorScheme)))
+            )
+            .padding(.horizontal, 8)
+            .offset(y: -2)
+    }
+
+    @ViewBuilder
+    private func unfocusedFooter(for tab: Tab) -> some View {
+        let snapshots = tab.panels.keys.compactMap { claudeStatsStore.snapshots[$0] }
+        if let inline = ClaudeStatsAggregator.inline(forTabs: snapshots) {
+            ClaudeStatsInlineView(snapshot: inline, theme: claudeStatsTheme)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 4)
+        }
+    }
+
+    private func runAutoConfigure() {
+        do {
+            try claudeSettingsInspector.autoConfigureAtomic()
+            claudeSetupError = nil
+            claudeConnectionStatus = claudeSettingsInspector.classifyConnectionStatus()
+        } catch let error as ClaudeSettingsInspector.AutoConfigureError {
+            claudeSetupError = String(
+                format: String(
+                    localized: "sidebar.claudeStats.setup.writeFailed",
+                    defaultValue: "Could not write ~/.claude/settings.json: %@"
+                ),
+                String(describing: error)
+            )
+        } catch {
+            claudeSetupError = String(
+                format: String(
+                    localized: "sidebar.claudeStats.setup.writeFailed",
+                    defaultValue: "Could not write ~/.claude/settings.json: %@"
+                ),
+                error.localizedDescription
+            )
+        }
+    }
+}
+
+/// Outlines + subtle-fill the workspace VStack when it is NOT the selected
+/// row. Selected rows keep their own TabItemView-drawn highlight untouched.
+/// Theme-neutral via `Color.primary.opacity(...)`, which auto-adapts to dark
+/// and light ghostty themes.
+private struct UnselectedWorkspaceRowFrame: ViewModifier {
+    let isFocused: Bool
+
+    private let cornerRadius: CGFloat = 8
+    private let fillOpacity: CGFloat = 0.04
+    private let strokeOpacity: CGFloat = 0.08
+    private let strokeWidth: CGFloat = 0.5
+
+    func body(content: Content) -> some View {
+        if isFocused {
+            content
+        } else {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.primary.opacity(fillOpacity))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.primary.opacity(strokeOpacity), lineWidth: strokeWidth)
+                )
+        }
     }
 }
 

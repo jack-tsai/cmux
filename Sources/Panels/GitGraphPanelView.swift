@@ -1142,11 +1142,15 @@ struct GitGraphPanelView: View {
         .padding(.vertical, 1)
         .contentShape(Rectangle())
         .onTapGesture {
-            dispatchGitShow(sha: sha, filePath: file.path)
+            // Task 5.1: fileRow opens a DiffPanel tab instead of writing
+            // `git show` into the terminal scrollback.
+            AppDelegate.shared?.tabManager?.openOrFocusDiff(
+                mode: .commitVsParent(sha: sha, path: file.path)
+            )
         }
         .help(Text(String(
-            localized: "gitGraph.detail.fileRow.tooltip",
-            defaultValue: "Click to run git show in the workspace terminal"
+            localized: "gitGraph.fileRow.tooltip.diff",
+            defaultValue: "Click to view diff in a new tab"
         )))
     }
 

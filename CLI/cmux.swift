@@ -1827,6 +1827,22 @@ struct CMUXCLI {
             }
         }
 
+        // Claude Code statusLine command — called by Claude Code each
+        // statusline tick with full session JSON on stdin. Forwards to cmuxd
+        // and prints an empty stdout. Always exits 0 so Claude Code UI never
+        // shows a crash.
+        if command == "statusline" {
+            runClaudeStatuslineSubcommand(socketPath: resolvedSocketPath, processEnv: processEnv)
+            return
+        }
+
+        // Claude Code PreCompact hook — ticks the per-session compact counter
+        // in cmuxd. No stdout.
+        if command == "record-compact" {
+            runClaudeRecordCompactSubcommand(socketPath: resolvedSocketPath, processEnv: processEnv)
+            return
+        }
+
         // Cursor hooks management (no socket needed)
         if command == "cursor" {
             let sub = commandArgs.first?.lowercased() ?? "help"
@@ -13942,6 +13958,118 @@ struct CMUXCLI {
     private func runGeminiUninstallHooks() throws { try uninstallAgentHooks(Self.agentDef(named: "gemini")!) }
     private func runGeminiHook(commandArgs: [String], client: SocketClient, telemetry: CLISocketSentryTelemetry) throws {
         try runGenericAgentHook(def: Self.agentDef(named: "gemini")!, commandArgs: commandArgs, client: client, telemetry: telemetry)
+    }
+
+    // MARK: - Claude Code statusline / compact hooks
+    //
+    // `cmux statusline` is set as Claude Code's `statusLine.command` so Claude
+    // pipes its per-tick session JSON to this subcommand on stdin. The
+    // subcommand reads stdin, wraps it in an envelope with the owning tab's
+    // CMUX_SURFACE_ID, and fires-and-forgets to the cmuxd unix socket named by
+    // CMUX_SOCKET. stdout is always empty so Claude Code's UI keeps that row
+    // blank (cmux sidebar is the real display).
+    //
+    // `cmux record-compact` does the same for Claude's `PreCompact` hook,
+    // bumping a per-session counter in cmuxd.
+    //
+    // Both calls MUST exit 0 on every path — otherwise Claude Code surfaces
+    // an error state to the user.
+
+    private func runClaudeStatuslineSubcommand(
+        socketPath: String,
+        processEnv: [String: String]
+    ) {
+        // Always blank stdout + exit 0.
+        defer { print("") }
+
+        let data = FileHandle.standardInput.availableData
+        guard !data.isEmpty,
+              let parsed = try? JSONSerialization.jsonObject(with: data),
+              let jsonObject = parsed as? [String: Any] else {
+            return
+        }
+
+        guard let surfaceIdStr = processEnv["CMUX_SURFACE_ID"], !surfaceIdStr.isEmpty else {
+            return
+        }
+        let sessionId = (jsonObject["session_id"] as? String) ?? ""
+        guard !sessionId.isEmpty else { return }
+
+        let envelope: [String: Any] = [
+            "cmd": "claude.statusline",
+            "v": 1,
+            "surface_id": surfaceIdStr,
+            "session_id": sessionId,
+            "at": Date().timeIntervalSince1970,
+            "payload": jsonObject,
+        ]
+        Self.fireAndForgetSend(envelope: envelope, socketPath: socketPath)
+    }
+
+    private func runClaudeRecordCompactSubcommand(
+        socketPath: String,
+        processEnv: [String: String]
+    ) {
+        let data = FileHandle.standardInput.availableData
+        guard !data.isEmpty,
+              let parsed = try? JSONSerialization.jsonObject(with: data),
+              let jsonObject = parsed as? [String: Any] else {
+            return
+        }
+        guard let sessionId = jsonObject["session_id"] as? String, !sessionId.isEmpty else {
+            return
+        }
+
+        let envelope: [String: Any] = [
+            "cmd": "claude.compact",
+            "v": 1,
+            "session_id": sessionId,
+            "at": Date().timeIntervalSince1970,
+        ]
+        Self.fireAndForgetSend(envelope: envelope, socketPath: socketPath)
+    }
+
+    /// Best-effort one-shot JSON-line send to the cmuxd unix socket. Never
+    /// throws; silently no-ops if the socket is missing, busy, or the envelope
+    /// can't be encoded. The line format is `<cmd> <envelope-json>\n` so cmuxd's
+    /// v1 space-split dispatcher routes it — a leading `{` would otherwise
+    /// short-circuit into the v2 JSON dispatcher and fail.
+    private static func fireAndForgetSend(envelope: [String: Any], socketPath: String) {
+        guard !socketPath.isEmpty,
+              let cmd = envelope["cmd"] as? String,
+              let data = try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return
+        }
+        var line = "\(cmd) \(json)"
+        if !line.hasSuffix("\n") { line += "\n" }
+
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        if fd < 0 { return }
+        defer { Darwin.close(fd) }
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+        let pathBytes = Array(socketPath.utf8)
+        if pathBytes.count >= capacity { return }
+        _ = withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+            ptr.withMemoryRebound(to: UInt8.self, capacity: capacity) { buf in
+                for i in 0..<pathBytes.count { buf[i] = pathBytes[i] }
+                buf[pathBytes.count] = 0
+            }
+        }
+        let connectResult = withUnsafePointer(to: &addr) { aptr -> Int32 in
+            aptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sptr in
+                Darwin.connect(fd, sptr, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        if connectResult != 0 { return }
+
+        let lineBytes = Array(line.utf8)
+        _ = lineBytes.withUnsafeBufferPointer { buf in
+            Darwin.send(fd, buf.baseAddress, buf.count, 0)
+        }
     }
 
     // MARK: - Unified setup-hooks

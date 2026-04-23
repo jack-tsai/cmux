@@ -4996,6 +4996,23 @@ class TabManager: ObservableObject {
         workspace.dispatchTextToTerminal(text: text)
     }
 
+    /// Open or focus a read-only file-preview tab in the selected workspace.
+    /// Task 1.7 facade for File Explorer Cmd+Click.
+    @discardableResult
+    func openOrFocusFilePreview(filePath: String) -> FilePreviewPanel? {
+        selectedWorkspace?.clearSplitZoom()
+        return selectedWorkspace?.openOrFocusFilePreviewSurface(filePath: filePath)
+    }
+
+    /// Open or focus a read-only diff tab in the selected workspace. Returns
+    /// nil on SSH workspaces or when no workspace is selected. Task 1.7
+    /// facade for File Explorer Cmd+Click and Git Graph file rows.
+    @discardableResult
+    func openOrFocusDiff(mode: DiffMode) -> DiffPanel? {
+        selectedWorkspace?.clearSplitZoom()
+        return selectedWorkspace?.openOrFocusDiffSurface(mode: mode)
+    }
+
     // MARK: - Split Creation
 
     /// Create a new split in the current tab

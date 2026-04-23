@@ -2918,6 +2918,8 @@ private struct SidebarDebugView: View {
     @AppStorage(SidebarActiveTabIndicatorSettings.styleKey)
     private var sidebarActiveTabIndicatorStyle = SidebarActiveTabIndicatorSettings.defaultStyle.rawValue
     @AppStorage("sidebarSelectionColorHex") private var sidebarSelectionColorHex: String?
+    @AppStorage(SidebarClaudeStatsSettings.key)
+    private var showClaudeStatsInSidebar = SidebarClaudeStatsSettings.defaultValue
 
     private var selectedSidebarIndicatorStyle: SidebarActiveTabIndicatorStyle {
         SidebarActiveTabIndicatorSettings.resolvedStyle(rawValue: sidebarActiveTabIndicatorStyle)
@@ -3064,6 +3066,17 @@ private struct SidebarDebugView: View {
                             .font(.caption)
                         }
                     }
+                    .padding(.top, 2)
+                }
+
+                GroupBox("Claude Stats") {
+                    Toggle(
+                        String(
+                            localized: "debugMenu.sidebar.showClaudeStats",
+                            defaultValue: "Show Claude Stats in Sidebar"
+                        ),
+                        isOn: $showClaudeStatsInSidebar
+                    )
                     .padding(.top, 2)
                 }
 

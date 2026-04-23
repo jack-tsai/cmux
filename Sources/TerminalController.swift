@@ -2000,6 +2000,12 @@ class TerminalController {
             case "surface_health":
                 return surfaceHealth(args)
 
+            case "claude.statusline":
+                return handleClaudeStatusline(args)
+
+            case "claude.compact":
+                return handleClaudeCompact(args)
+
             default:
                 return "ERROR: Unknown command '\(cmd)'. Use 'help' for available commands."
             }
@@ -15717,6 +15723,59 @@ class TerminalController {
             current = v.superview
         }
         return false
+    }
+
+    // MARK: - Claude stats ingest
+
+    /// Handle `claude.statusline <json>` from `cmux statusline` subcommand.
+    /// Parses off-main (CLAUDE.md telemetry threading policy), then hops to
+    /// main only to mutate `ClaudeStatsStore`. Always returns "OK" so the
+    /// CLI-side fire-and-forget sender has a stable contract even though
+    /// it doesn't read the response.
+    private func handleClaudeStatusline(_ args: String) -> String {
+        guard let data = args.data(using: .utf8),
+              let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "OK"
+        }
+        if let v = envelope["v"] as? Int, v > 1 {
+            // Unknown future envelope version — drop silently.
+            return "OK"
+        }
+        guard let surfaceIdStr = envelope["surface_id"] as? String,
+              let surfaceId = UUID(uuidString: surfaceIdStr),
+              let sessionId = envelope["session_id"] as? String,
+              !sessionId.isEmpty,
+              let payloadAny = envelope["payload"] else {
+            return "OK"
+        }
+        guard let payloadData = try? JSONSerialization.data(withJSONObject: payloadAny),
+              let payload = try? JSONDecoder().decode(ClaudeStatsStatuslinePayload.self, from: payloadData) else {
+            return "OK"
+        }
+        DispatchQueue.main.async {
+            ClaudeStatsStore.shared.ingestStatusline(
+                surfaceId: surfaceId,
+                sessionId: sessionId,
+                payload: payload
+            )
+        }
+        return "OK"
+    }
+
+    /// Handle `claude.compact <json>` from `cmux record-compact` subcommand.
+    private func handleClaudeCompact(_ args: String) -> String {
+        guard let data = args.data(using: .utf8),
+              let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "OK"
+        }
+        if let v = envelope["v"] as? Int, v > 1 { return "OK" }
+        guard let sessionId = envelope["session_id"] as? String, !sessionId.isEmpty else {
+            return "OK"
+        }
+        DispatchQueue.main.async {
+            ClaudeStatsStore.shared.incrementCompact(sessionId: sessionId)
+        }
+        return "OK"
     }
 
     private func surfaceHealth(_ tabArg: String) -> String {

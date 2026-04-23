@@ -499,6 +499,12 @@ extension Workspace {
             terminalSnapshot = nil
             browserSnapshot = nil
             markdownSnapshot = nil
+        case .filePreview, .diff:
+            // File preview / diff panels are transient — session restore is
+            // deferred to a follow-up change.
+            terminalSnapshot = nil
+            browserSnapshot = nil
+            markdownSnapshot = nil
         }
 
         return SessionPanelSnapshot(
@@ -692,6 +698,9 @@ extension Workspace {
         case .gitGraph:
             // Git Graph panel session restore is deferred — skip silently
             // so the rest of the workspace still rehydrates. Tasks 1.2 / 3.x.
+            return nil
+        case .filePreview, .diff:
+            // File preview / diff tabs are ephemeral; skip restore.
             return nil
         }
     }
@@ -6727,6 +6736,8 @@ final class Workspace: Identifiable, ObservableObject {
         static let browser = "browser"
         static let markdown = "markdown"
         static let gitGraph = "gitGraph"
+        static let filePreview = "filePreview"
+        static let diff = "diff"
     }
 
     enum PanelShellActivityState: String {
@@ -7281,6 +7292,10 @@ final class Workspace: Identifiable, ObservableObject {
             return SurfaceKind.markdown
         case .gitGraph:
             return SurfaceKind.gitGraph
+        case .filePreview:
+            return SurfaceKind.filePreview
+        case .diff:
+            return SurfaceKind.diff
         }
     }
 
@@ -10283,6 +10298,145 @@ final class Workspace: Identifiable, ObservableObject {
     func newGitGraphSurfaceInFocusedPane(focus: Bool? = nil) -> GitGraphPanel? {
         guard let focusedPaneId = bonsplitController.focusedPaneId else { return nil }
         return newGitGraphSurface(inPane: focusedPaneId, focus: focus)
+    }
+
+    // MARK: - File preview surface (tasks 1.6 / 2.9 / 4.9)
+
+    /// Create a new `FilePreviewPanel` tab in the given pane. Returns nil if
+    /// bonsplit rejects the tab allocation.
+    @discardableResult
+    func newFilePreviewSurface(
+        inPane paneId: PaneID,
+        filePath: String,
+        focus: Bool? = nil
+    ) -> FilePreviewPanel? {
+        let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalPanel?.hostedView
+
+        let panel = FilePreviewPanel(workspaceId: id, filePath: filePath)
+        panels[panel.id] = panel
+        panelTitles[panel.id] = panel.displayTitle
+
+        guard let newTabId = bonsplitController.createTab(
+            title: panel.displayTitle,
+            icon: panel.displayIcon,
+            kind: SurfaceKind.filePreview,
+            isDirty: panel.isDirty,
+            isLoading: false,
+            isPinned: false,
+            inPane: paneId
+        ) else {
+            panels.removeValue(forKey: panel.id)
+            panelTitles.removeValue(forKey: panel.id)
+            return nil
+        }
+
+        surfaceIdToPanelId[newTabId] = panel.id
+        if shouldFocusNewTab {
+            bonsplitController.focusPane(paneId)
+            bonsplitController.selectTab(newTabId)
+            applyTabSelection(tabId: newTabId, inPane: paneId)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: panel.id,
+                previousHostedView: previousHostedView
+            )
+        }
+
+        return panel
+    }
+
+    /// Focus an existing file-preview tab for `filePath`, reloading its
+    /// snapshot (task 2.9). Creates a new tab in the focused pane when none
+    /// exists. Dedup identity is the `resolvingSymlinksInPath` canonical path.
+    @discardableResult
+    func openOrFocusFilePreviewSurface(filePath: String) -> FilePreviewPanel? {
+        let canonical = (filePath as NSString).resolvingSymlinksInPath
+        for (existingId, panel) in panels {
+            guard let preview = panel as? FilePreviewPanel else { continue }
+            if (preview.filePath as NSString).resolvingSymlinksInPath == canonical {
+                preview.reload()
+                focusPanel(existingId)
+                return preview
+            }
+        }
+        guard let focusedPaneId = bonsplitController.focusedPaneId else { return nil }
+        return newFilePreviewSurface(inPane: focusedPaneId, filePath: filePath, focus: true)
+    }
+
+    // MARK: - Diff surface (tasks 1.6 / 3.11 / 3.14 / 4.9)
+
+    /// Create a new `DiffPanel` tab. Returns nil for SSH workspaces (task
+    /// 3.11) or when bonsplit rejects the allocation.
+    @discardableResult
+    func newDiffSurface(
+        inPane paneId: PaneID,
+        mode: DiffMode,
+        focus: Bool? = nil
+    ) -> DiffPanel? {
+        // Task 3.11: decline cleanly on SSH workspaces.
+        if remoteConfiguration != nil { return nil }
+
+        let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalPanel?.hostedView
+
+        let panel = DiffPanel(
+            workspaceId: id,
+            workspaceDirectory: currentDirectory,
+            mode: mode
+        )
+        panels[panel.id] = panel
+        panelTitles[panel.id] = panel.displayTitle
+
+        guard let newTabId = bonsplitController.createTab(
+            title: panel.displayTitle,
+            icon: panel.displayIcon,
+            kind: SurfaceKind.diff,
+            isDirty: panel.isDirty,
+            isLoading: false,
+            isPinned: false,
+            inPane: paneId
+        ) else {
+            panels.removeValue(forKey: panel.id)
+            panelTitles.removeValue(forKey: panel.id)
+            return nil
+        }
+
+        surfaceIdToPanelId[newTabId] = panel.id
+        if shouldFocusNewTab {
+            bonsplitController.focusPane(paneId)
+            bonsplitController.selectTab(newTabId)
+            applyTabSelection(tabId: newTabId, inPane: paneId)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: panel.id,
+                previousHostedView: previousHostedView
+            )
+        }
+
+        return panel
+    }
+
+    /// Focus an existing diff tab matching `mode`, triggering a refresh
+    /// (task 3.14). Creates a new tab in the focused pane when none matches.
+    /// Dedup identity = (kind, sha?, canonical path).
+    @discardableResult
+    func openOrFocusDiffSurface(mode: DiffMode) -> DiffPanel? {
+        if remoteConfiguration != nil { return nil }
+        for (existingId, panel) in panels {
+            guard let diff = panel as? DiffPanel else { continue }
+            if diff.mode == mode {
+                diff.refresh()
+                focusPanel(existingId)
+                return diff
+            }
+        }
+        guard let focusedPaneId = bonsplitController.focusedPaneId else { return nil }
+        return newDiffSurface(inPane: focusedPaneId, mode: mode, focus: true)
     }
 
     @discardableResult

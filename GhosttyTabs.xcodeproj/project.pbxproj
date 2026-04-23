@@ -16,6 +16,33 @@
 		CAFE0101 /* GitGraphProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0001 /* GitGraphProvider.swift */; };
 		FE002102 /* FileExplorerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE002002 /* FileExplorerStoreTests.swift */; };
 		CAFE1101 /* GitGraphProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE1001 /* GitGraphProviderTests.swift */; };
+		DF000101 /* FilePreviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000001 /* FilePreviewPanel.swift */; };
+		DF000102 /* FilePreviewPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000002 /* FilePreviewPanelView.swift */; };
+		DF000103 /* DiffPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000003 /* DiffPanel.swift */; };
+		DF000104 /* DiffPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000004 /* DiffPanelView.swift */; };
+		DF000105 /* DiffProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000005 /* DiffProvider.swift */; };
+		DF000106 /* FileOpenDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000006 /* FileOpenDispatcher.swift */; };
+		DF001101 /* DiffProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF001001 /* DiffProviderTests.swift */; };
+		DF001102 /* FileOpenDispatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF001002 /* FileOpenDispatchTests.swift */; };
+		DF001103 /* WorkspaceTabDedupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF001003 /* WorkspaceTabDedupTests.swift */; };
+		CA5E0101 /* ClaudeStatsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0001 /* ClaudeStatsTypes.swift */; };
+		CA5E0102 /* ClaudeStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0002 /* ClaudeStatsStore.swift */; };
+		CA5E0103 /* ClaudeStatsPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0003 /* ClaudeStatsPersistence.swift */; };
+		CA5E0104 /* ClaudeStatsTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0004 /* ClaudeStatsTheme.swift */; };
+		CA5E0105 /* ClaudeStatsFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0005 /* ClaudeStatsFormatter.swift */; };
+		CA5E0106 /* ClaudeStatsRowModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0006 /* ClaudeStatsRowModel.swift */; };
+		CA5E0110 /* SidebarClaudeStatsSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0010 /* SidebarClaudeStatsSettings.swift */; };
+		CA5E0111 /* ClaudeSettingsInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0011 /* ClaudeSettingsInspector.swift */; };
+		CA5E0112 /* ClaudeStatsSetupCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0012 /* ClaudeStatsSetupCardView.swift */; };
+		CA5E1106 /* ClaudeSettingsInspectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E1006 /* ClaudeSettingsInspectorTests.swift */; };
+		CA5E0107 /* ClaudeStatsAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0007 /* ClaudeStatsAggregator.swift */; };
+		CA5E0108 /* ClaudeStatsBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0008 /* ClaudeStatsBlockView.swift */; };
+		CA5E0109 /* ClaudeStatsInlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E0009 /* ClaudeStatsInlineView.swift */; };
+		CA5E1105 /* ClaudeStatsAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E1005 /* ClaudeStatsAggregatorTests.swift */; };
+		CA5E1101 /* StatuslineIngestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E1001 /* StatuslineIngestTests.swift */; };
+		CA5E1102 /* ClaudeCompactCounterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E1002 /* ClaudeCompactCounterTests.swift */; };
+		CA5E1103 /* ClaudeStatsThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E1003 /* ClaudeStatsThemeTests.swift */; };
+		CA5E1104 /* ClaudeStatsFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5E1004 /* ClaudeStatsFormatterTests.swift */; };
 			A5001001 /* cmuxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001011 /* cmuxApp.swift */; };
 			A5001002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001012 /* ContentView.swift */; };
 			E62155868BB29FEB5DAAAF25 /* SidebarSelectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD52285508B1D6A9875E7B3 /* SidebarSelectionState.swift */; };
@@ -227,6 +254,33 @@
 		FE002001 /* FileExplorerRootResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerRootResolverTests.swift; sourceTree = "<group>"; };
 		FE002002 /* FileExplorerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerStoreTests.swift; sourceTree = "<group>"; };
 		CAFE1001 /* GitGraphProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphProviderTests.swift; sourceTree = "<group>"; };
+		DF000001 /* FilePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewPanel.swift; sourceTree = "<group>"; };
+		DF000002 /* FilePreviewPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewPanelView.swift; sourceTree = "<group>"; };
+		DF000003 /* DiffPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/DiffPanel.swift; sourceTree = "<group>"; };
+		DF000004 /* DiffPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/DiffPanelView.swift; sourceTree = "<group>"; };
+		DF000005 /* DiffProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffProvider.swift; sourceTree = "<group>"; };
+		DF000006 /* FileOpenDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpenDispatcher.swift; sourceTree = "<group>"; };
+		DF001001 /* DiffProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffProviderTests.swift; sourceTree = "<group>"; };
+		DF001002 /* FileOpenDispatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpenDispatchTests.swift; sourceTree = "<group>"; };
+		DF001003 /* WorkspaceTabDedupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTabDedupTests.swift; sourceTree = "<group>"; };
+		CA5E0001 /* ClaudeStatsTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsTypes.swift; sourceTree = "<group>"; };
+		CA5E0002 /* ClaudeStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsStore.swift; sourceTree = "<group>"; };
+		CA5E0003 /* ClaudeStatsPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsPersistence.swift; sourceTree = "<group>"; };
+		CA5E0004 /* ClaudeStatsTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsTheme.swift; sourceTree = "<group>"; };
+		CA5E0005 /* ClaudeStatsFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsFormatter.swift; sourceTree = "<group>"; };
+		CA5E0006 /* ClaudeStatsRowModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsRowModel.swift; sourceTree = "<group>"; };
+		CA5E0010 /* SidebarClaudeStatsSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarClaudeStatsSettings.swift; sourceTree = "<group>"; };
+		CA5E0011 /* ClaudeSettingsInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSettingsInspector.swift; sourceTree = "<group>"; };
+		CA5E0012 /* ClaudeStatsSetupCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/ClaudeStatsSetupCardView.swift; sourceTree = "<group>"; };
+		CA5E1006 /* ClaudeSettingsInspectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSettingsInspectorTests.swift; sourceTree = "<group>"; };
+		CA5E0007 /* ClaudeStatsAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsAggregator.swift; sourceTree = "<group>"; };
+		CA5E0008 /* ClaudeStatsBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/ClaudeStatsBlockView.swift; sourceTree = "<group>"; };
+		CA5E0009 /* ClaudeStatsInlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/ClaudeStatsInlineView.swift; sourceTree = "<group>"; };
+		CA5E1005 /* ClaudeStatsAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsAggregatorTests.swift; sourceTree = "<group>"; };
+		CA5E1001 /* StatuslineIngestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatuslineIngestTests.swift; sourceTree = "<group>"; };
+		CA5E1002 /* ClaudeCompactCounterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCompactCounterTests.swift; sourceTree = "<group>"; };
+		CA5E1003 /* ClaudeStatsThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsThemeTests.swift; sourceTree = "<group>"; };
+		CA5E1004 /* ClaudeStatsFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatsFormatterTests.swift; sourceTree = "<group>"; };
 			A5001000 /* cmux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cmux.app; sourceTree = BUILT_PRODUCTS_DIR; };
 			F1000002A1B2C3D4E5F60718 /* cmuxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = cmuxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 			7E7E6EF344A568AC7FEE3715 /* cmuxUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = cmuxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -525,6 +579,13 @@
 				A5001419 /* MarkdownPanelView.swift */,
 				CAFE0002 /* GitGraphPanel.swift */,
 				CAFE0003 /* GitGraphPanelView.swift */,
+				DF000001 /* FilePreviewPanel.swift */,
+				DF000002 /* FilePreviewPanelView.swift */,
+				DF000003 /* DiffPanel.swift */,
+				DF000004 /* DiffPanelView.swift */,
+				CA5E0008 /* ClaudeStatsBlockView.swift */,
+				CA5E0009 /* ClaudeStatsInlineView.swift */,
+				CA5E0012 /* ClaudeStatsSetupCardView.swift */,
 				A5001510 /* CmuxWebView.swift */,
 				A5001415 /* PanelContentView.swift */,
 				A5001211 /* UpdateController.swift */,
@@ -549,6 +610,17 @@
 				A5001655 /* CmuxDirectoryTrust.swift */,
 				FE001001 /* FileExplorerStore.swift */,
 				CAFE0001 /* GitGraphProvider.swift */,
+				DF000005 /* DiffProvider.swift */,
+				DF000006 /* FileOpenDispatcher.swift */,
+				CA5E0001 /* ClaudeStatsTypes.swift */,
+				CA5E0002 /* ClaudeStatsStore.swift */,
+				CA5E0003 /* ClaudeStatsPersistence.swift */,
+				CA5E0004 /* ClaudeStatsTheme.swift */,
+				CA5E0005 /* ClaudeStatsFormatter.swift */,
+				CA5E0006 /* ClaudeStatsRowModel.swift */,
+				CA5E0007 /* ClaudeStatsAggregator.swift */,
+				CA5E0010 /* SidebarClaudeStatsSettings.swift */,
+				CA5E0011 /* ClaudeSettingsInspector.swift */,
 				FE001002 /* FileExplorerView.swift */,
 				FE003001 /* SessionIndexStore.swift */,
 				FE003002 /* SessionIndexView.swift */,
@@ -651,6 +723,15 @@
 					FE002001 /* FileExplorerRootResolverTests.swift */,
 					FE002002 /* FileExplorerStoreTests.swift */,
 					CAFE1001 /* GitGraphProviderTests.swift */,
+					DF001001 /* DiffProviderTests.swift */,
+					DF001002 /* FileOpenDispatchTests.swift */,
+					DF001003 /* WorkspaceTabDedupTests.swift */,
+					CA5E1001 /* StatuslineIngestTests.swift */,
+					CA5E1002 /* ClaudeCompactCounterTests.swift */,
+					CA5E1003 /* ClaudeStatsThemeTests.swift */,
+					CA5E1004 /* ClaudeStatsFormatterTests.swift */,
+					CA5E1005 /* ClaudeStatsAggregatorTests.swift */,
+					CA5E1006 /* ClaudeSettingsInspectorTests.swift */,
 				);
 				path = cmuxTests;
 				sourceTree = "<group>";
@@ -863,6 +944,24 @@
 				A5001421 /* MarkdownPanelView.swift in Sources */,
 				CAFE0201 /* GitGraphPanel.swift in Sources */,
 				CAFE0301 /* GitGraphPanelView.swift in Sources */,
+				DF000101 /* FilePreviewPanel.swift in Sources */,
+				DF000102 /* FilePreviewPanelView.swift in Sources */,
+				DF000103 /* DiffPanel.swift in Sources */,
+				DF000104 /* DiffPanelView.swift in Sources */,
+				DF000105 /* DiffProvider.swift in Sources */,
+				DF000106 /* FileOpenDispatcher.swift in Sources */,
+				CA5E0101 /* ClaudeStatsTypes.swift in Sources */,
+				CA5E0102 /* ClaudeStatsStore.swift in Sources */,
+				CA5E0103 /* ClaudeStatsPersistence.swift in Sources */,
+				CA5E0104 /* ClaudeStatsTheme.swift in Sources */,
+				CA5E0105 /* ClaudeStatsFormatter.swift in Sources */,
+				CA5E0106 /* ClaudeStatsRowModel.swift in Sources */,
+				CA5E0110 /* SidebarClaudeStatsSettings.swift in Sources */,
+				CA5E0111 /* ClaudeSettingsInspector.swift in Sources */,
+				CA5E0112 /* ClaudeStatsSetupCardView.swift in Sources */,
+				CA5E0107 /* ClaudeStatsAggregator.swift in Sources */,
+				CA5E0108 /* ClaudeStatsBlockView.swift in Sources */,
+				CA5E0109 /* ClaudeStatsInlineView.swift in Sources */,
 				A5001500 /* CmuxWebView.swift in Sources */,
 				A5001405 /* PanelContentView.swift in Sources */,
 				A5001201 /* UpdateController.swift in Sources */,
@@ -964,6 +1063,15 @@
 					FE002101 /* FileExplorerRootResolverTests.swift in Sources */,
 					FE002102 /* FileExplorerStoreTests.swift in Sources */,
 					CAFE1101 /* GitGraphProviderTests.swift in Sources */,
+					DF001101 /* DiffProviderTests.swift in Sources */,
+					DF001102 /* FileOpenDispatchTests.swift in Sources */,
+					DF001103 /* WorkspaceTabDedupTests.swift in Sources */,
+					CA5E1101 /* StatuslineIngestTests.swift in Sources */,
+					CA5E1102 /* ClaudeCompactCounterTests.swift in Sources */,
+					CA5E1103 /* ClaudeStatsThemeTests.swift in Sources */,
+					CA5E1104 /* ClaudeStatsFormatterTests.swift in Sources */,
+					CA5E1105 /* ClaudeStatsAggregatorTests.swift in Sources */,
+					CA5E1106 /* ClaudeSettingsInspectorTests.swift in Sources */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 			};

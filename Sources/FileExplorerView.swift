@@ -283,6 +283,35 @@ struct FileExplorerPanelView: NSViewRepresentable {
             NSPasteboard.general.setString(node.path, forType: .string)
         }
 
+        // MARK: - Cmd+Click dispatch (tasks 4.4 / 4.5)
+
+        @MainActor
+        func dispatchCmdClick(path: String) {
+            guard let tabManager = AppDelegate.shared?.tabManager,
+                  let workspace = tabManager.selectedWorkspace else { return }
+            let environment = FileOpenDispatcher.liveEnvironment(
+                workspaceDirectory: workspace.currentDirectory,
+                isRemoteWorkspace: workspace.remoteConfiguration != nil
+            )
+            let decision = FileOpenDispatcher.decide(path: path, environment: environment)
+            switch decision {
+            case .markdown(let resolved):
+                if let focused = workspace.focusedPanelId {
+                    _ = workspace.openOrFocusMarkdownSplit(from: focused, filePath: resolved)
+                }
+                // No focused panel → no anchor pane to split; fall through
+                // silently. The user can click any surface first, then retry.
+            case .diff(let resolved):
+                _ = tabManager.openOrFocusDiff(mode: .workingCopyVsHead(path: resolved))
+            case .preview(let resolved):
+                _ = tabManager.openOrFocusFilePreview(filePath: resolved)
+            case .unsupported:
+                // Task 4.7: directories, SSH workspaces, broken symlinks all
+                // land here — no-op per the dispatch spec.
+                break
+            }
+        }
+
         @objc private func contextMenuCopyRelativePath(_ sender: NSMenuItem) {
             guard let node = sender.representedObject as? FileExplorerNode else { return }
             let rootPath = store.rootPath
@@ -357,6 +386,15 @@ final class FileExplorerContainerView: NSView {
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator
         coordinator.outlineView = outlineView
+        // Tasks 4.4 / 4.5: Cmd+Click on a file row routes through
+        // FileOpenDispatcher and opens the resolved panel type. mouseDown
+        // always runs on the main thread (AppKit contract), so assume the
+        // isolation rather than hopping back through Task { @MainActor }.
+        outlineView.onCmdClickFile = { [weak coordinator] path in
+            MainActor.assumeIsolated {
+                coordinator?.dispatchCmdClick(path: path)
+            }
+        }
 
         // Context menu
         let menu = NSMenu()
@@ -612,6 +650,10 @@ final class FileExplorerNSOutlineView: NSOutlineView {
     /// Leading margin applied to disclosure triangles and content.
     static let leadingMargin: CGFloat = 8
 
+    /// Callback invoked when the user Cmd+Clicks a file row. Tasks 4.4–4.7.
+    /// Wired by `FileExplorerPanelView` to `FileOpenDispatcher.decide(...)`.
+    var onCmdClickFile: ((String) -> Void)?
+
     override func expandItem(_ item: Any?, expandChildren: Bool) {
         NSAnimationContext.beginGrouping()
         NSAnimationContext.current.duration = 0
@@ -638,6 +680,36 @@ final class FileExplorerNSOutlineView: NSOutlineView {
         frame.origin.x += cellShift
         frame.size.width -= cellShift
         return frame
+    }
+
+    // Task 4.6: plain left-click still flows through normal selection /
+    // expand-collapse handlers. Only when `.command` is held do we intercept
+    // and dispatch to `onCmdClickFile`.
+    override func mouseDown(with event: NSEvent) {
+        guard event.modifierFlags.contains(.command),
+              event.type == .leftMouseDown else {
+            super.mouseDown(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        guard row >= 0 else {
+            super.mouseDown(with: event)
+            return
+        }
+        guard let node = item(atRow: row) as? FileExplorerNode else {
+            super.mouseDown(with: event)
+            return
+        }
+        // Task 4.7: directory rows are no-op — let the native click flow
+        // through so expand/collapse still responds if the user Cmd+Clicks
+        // a directory row.
+        if node.isDirectory {
+            super.mouseDown(with: event)
+            return
+        }
+        onCmdClickFile?(node.path)
+        // Swallow the event so no selection jump happens alongside the open.
     }
 }
 
