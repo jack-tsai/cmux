@@ -83,6 +83,43 @@ Debug menu SHALL provide a `Reset to Auto-detect` action that clears `screenshot
 - **AND** the resolver SHALL re-evaluate using step 2 onwards
 - **AND** the panel SHALL reload from the newly-resolved path
 
+### Requirement: settings.json sync for screenshotPanel.* keys
+
+`screenshotPanel.path`, `screenshotPanel.viewMode`, and `screenshotPanel.showsRightSidebarTab` SHALL be mirrored to `~/.config/cmux/settings.json` under the top-level object key `screenshotPanel` so the configuration is portable and version-control-friendly. The semantics SHALL be:
+
+- **On app startup**: if `~/.config/cmux/settings.json` exists and contains a `screenshotPanel` object, each recognized sub-key (`path`, `viewMode`, `showsRightSidebarTab`) SHALL be imported into `UserDefaults.standard` under the corresponding key. Unrecognized sub-keys SHALL be ignored (forward-compat). Malformed JSON or type mismatches SHALL be logged and SHALL NOT crash the app; existing UserDefaults values SHALL be preserved in that case.
+- **On every write** via the Debug menu or other UI (path picker, view-mode toggle, Shots-tab toggle): the value SHALL be written to both `UserDefaults.standard` AND `~/.config/cmux/settings.json`. The JSON file SHALL be written atomically (`Data.write(to:options:.atomic)`) and MUST preserve any existing top-level keys belonging to other settings domains (e.g. keyboard shortcuts under `keyboardShortcuts`).
+- **Reset to Auto-detect**: SHALL remove the `path` sub-key both from UserDefaults and from the `screenshotPanel` object in `settings.json` (leaving other `screenshotPanel` sub-keys intact).
+
+The pattern SHALL follow `KeyboardShortcutSettingsFileStore` (existing precedent for `~/.config/cmux/settings.json` portability in cmux).
+
+#### Scenario: settings.json has screenshotPanel block on startup
+
+- **WHEN** `~/.config/cmux/settings.json` contains `{"screenshotPanel": {"path": "/Users/jack/Pictures/螢幕載圖", "viewMode": "list"}}` and the app launches
+- **THEN** `UserDefaults.standard.string(forKey: "screenshotPanel.path")` SHALL equal `/Users/jack/Pictures/螢幕載圖`
+- **AND** `UserDefaults.standard.string(forKey: "screenshotPanel.viewMode")` SHALL equal `"list"`
+
+#### Scenario: Debug menu writes are mirrored to settings.json
+
+- **WHEN** the user picks a folder via the Debug menu and `settings.json` previously contained `{"keyboardShortcuts": {...}, "screenshotPanel": {"viewMode": "grid"}}`
+- **THEN** after the write, `settings.json` SHALL contain a `screenshotPanel.path` sub-key with the picked path
+- **AND** the pre-existing `keyboardShortcuts` top-level key SHALL remain byte-identical
+- **AND** the pre-existing `screenshotPanel.viewMode = "grid"` SHALL remain
+
+#### Scenario: Malformed settings.json at startup
+
+- **WHEN** `~/.config/cmux/settings.json` contains invalid JSON or `screenshotPanel` is not an object
+- **THEN** the import SHALL be skipped
+- **AND** the app SHALL log a warning via `dlog(...)`
+- **AND** the app SHALL NOT crash
+- **AND** any pre-existing UserDefaults values under `screenshotPanel.*` SHALL remain untouched
+
+#### Scenario: Reset to Auto-detect strips only the path key
+
+- **WHEN** `settings.json` contains `{"screenshotPanel": {"path": "...", "viewMode": "list", "showsRightSidebarTab": true}}` and the user clicks Reset to Auto-detect
+- **THEN** `settings.json` SHALL still contain `{"screenshotPanel": {"viewMode": "list", "showsRightSidebarTab": true}}`
+- **AND** the `path` sub-key SHALL NOT appear in the file
+
 ### Requirement: screenshotPanel.showsRightSidebarTab toggle
 
 An `@AppStorage("screenshotPanel.showsRightSidebarTab")` boolean (default `true`) SHALL control whether the Shots chip appears in the RightSidebarMode chip bar. When `false`, the Shots chip SHALL NOT render, and the mode SHALL NOT be accessible from the chip bar. If the mode was previously active when the toggle flips off, the sidebar SHALL switch back to `.files` mode.

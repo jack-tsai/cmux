@@ -52,13 +52,15 @@
 - [ ] 5.10 Rename 動作：inline TextField overlay；Enter 提交 → `FileManager.default.moveItem(at: old, to: new)`（檢查 destination 不存在，已存在則 inline error toast）；Esc / blur 取消；對應 spec `screenshot-panel-view` 的 Rename scenarios。
 - [ ] 5.11 Move to Trash 動作：`FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)`；失敗顯示 inline toast 不彈 alert；對應 spec `screenshot-panel-view` 的 Move to Trash scenarios。
 
-## 6. Debug menu + settings UI（decisions：「預設路徑 fallback chain」）
+## 6. Debug menu + settings UI + settings.json sync（decisions：「預設路徑 fallback chain」）
 
+- [ ] 6.0 新增 `Sources/ScreenshotPanelSettingsFileStore.swift`：仿 `KeyboardShortcutSettingsFileStore` 模式實作 `~/.config/cmux/settings.json` 的 `screenshotPanel` 區塊讀寫 — `load()` 在 `applicationDidFinishLaunching` 早期呼叫，從 JSON 匯入 `path`、`viewMode`、`showsRightSidebarTab` 到 UserDefaults；`write(path:)` / `write(viewMode:)` / `write(showsTab:)` / `clearPath()` 作為 Debug menu 寫入的 atomic 出口，必須保留其它 top-level keys（例如 `keyboardShortcuts`）。malformed JSON 走 `dlog` 不 crash。對應 spec `screenshot-panel-settings` 的 `settings.json sync for screenshotPanel.* keys` 全部 scenarios。
+- [ ] 6.0.1 新增 `cmuxTests/ScreenshotPanelSettingsFileStoreTests.swift`：fixture 以 temp HOME 注入，驗 ① 啟動讀 JSON → UserDefaults ② Debug-menu 寫入會保留其它 top-level keys ③ malformed JSON 時 UserDefaults 不變 ④ Reset 只移除 `path`；對應 spec `screenshot-panel-settings` 的 settings.json sync 全部 scenarios。
 - [ ] 6.1 修改 `Sources/cmuxApp.swift` 的 SidebarDebugView（或 new `ScreenshotPanelDebugView`）：加 `GroupBox("Screenshot Panel")` 含：
   - 顯示 current resolved path（read-only label）
-  - `Choose Folder…` Button → `NSOpenPanel(canChooseDirectories: true, canChooseFiles: false, allowsMultipleSelection: false)` → 寫 `screenshotPanel.path`
-  - `Reset to Auto-detect` Button → `UserDefaults.standard.removeObject(forKey: "screenshotPanel.path")`
-  - `Show Shots tab in sidebar` Toggle bind `@AppStorage("screenshotPanel.showsRightSidebarTab")`
+  - `Choose Folder…` Button → `NSOpenPanel(canChooseDirectories: true, canChooseFiles: false, allowsMultipleSelection: false)` → 透過 `ScreenshotPanelSettingsFileStore.write(path:)` 同時寫 UserDefaults 與 `settings.json`
+  - `Reset to Auto-detect` Button → `ScreenshotPanelSettingsFileStore.clearPath()`（移除 UserDefaults 與 `settings.json.screenshotPanel.path`）
+  - `Show Shots tab in sidebar` Toggle bind 到 `ScreenshotPanelSettingsFileStore.write(showsTab:)`；read 時仍走 `@AppStorage("screenshotPanel.showsRightSidebarTab")`
   對應 spec `screenshot-panel-settings` 的 Debug menu folder picker + Reset to Auto-detect scenarios。
 
 ## 7. i18n + pbxproj + build（decisions：無）

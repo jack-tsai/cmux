@@ -57,6 +57,30 @@ When `pasteFileURL` is called, the target terminal SHALL be resolved in this ord
 - **THEN** `lastFocusedTerminalPanelId` SHALL equal T1's id
 - **AND** not nil, not T3's id
 
+### Requirement: SSH upload progress feedback on gallery cell
+
+When `pasteFileURL` targets a workspace with `remoteConfiguration != nil` and the upload does not complete within 500 ms, the originating gallery cell SHALL display a spinner overlay for the remainder of the upload. No transient progress text SHALL be written into the terminal scrollback; the terminal SHALL remain quiet until the final file-reference insertion. When the upload finishes (success or failure), the spinner SHALL disappear within 100 ms.
+
+#### Scenario: SSH upload of a 10 MB PNG takes 2 seconds
+
+- **WHEN** the user double-clicks a 10 MB PNG in an SSH workspace and the `scp` upload takes 2 s
+- **THEN** within 500 ms of the double-click the gallery cell for that entry SHALL show a spinner overlay
+- **AND** no `uploading…` text SHALL appear in the terminal scrollback
+- **AND** within 100 ms of upload completion the spinner SHALL be removed
+- **AND** the terminal SHALL then receive the remote-path file reference exactly once
+
+#### Scenario: SSH upload completes in under 500 ms
+
+- **WHEN** the upload completes in 200 ms
+- **THEN** the gallery cell SHALL NOT display the spinner overlay at any point
+
+#### Scenario: SSH upload fails
+
+- **WHEN** the upload fails (e.g. scp error)
+- **THEN** the spinner SHALL be removed within 100 ms of the failure
+- **AND** the terminal SHALL NOT receive a file reference
+- **AND** an inline error SHALL be surfaced on the panel (not in the terminal)
+
 ### Requirement: Drag-out uses same pipeline
 
 The drag-out code path from `ScreenshotPanelView` SHALL route drops into terminal surfaces through the existing terminal drop handler, which uses the same `TerminalImageTransfer` APIs as ⌘V pasting. No parallel drop implementation SHALL be created.
