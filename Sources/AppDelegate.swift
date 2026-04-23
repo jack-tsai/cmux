@@ -1373,7 +1373,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillTerminate(_ notification: Notification) {
         isTerminatingApp = true
-        _ = saveSessionSnapshot(includeScrollback: true, removeWhenEmpty: false)
+        // `includeScrollback: false` on purpose — this is the final save on
+        // the quit path and `shouldWriteSessionSnapshotSynchronously` forces
+        // it onto the main thread. Capturing scrollback here serialises
+        // every terminal's replay buffer synchronously and made Cmd+Q feel
+        // frozen for 5–10 s after the user clicked "Quit". The autosave
+        // timer (`startSessionAutosaveTimerIfNeeded`) already persists the
+        // full scrollback on a ~15 s cadence with the same sync policy when
+        // `isTerminatingApp` flips, so the worst-case data we drop here is
+        // the scrollback delta since the last autosave tick — a bounded,
+        // low-value loss compared to the always-fast quit we get in
+        // exchange.
+        _ = saveSessionSnapshot(includeScrollback: false, removeWhenEmpty: false)
         stopSessionAutosaveTimer()
         TerminalController.shared.stop()
         VSCodeServeWebController.shared.stop()
