@@ -68,7 +68,14 @@ enum ClaudeStatsAggregator {
             freeTierHint = "No quota data (Claude.ai free)"
         }
 
+        // First 8 chars mirrors how git shows short SHAs — enough to
+        // disambiguate between sessions on the same project without
+        // taking the whole row width. The view hides the identity row
+        // entirely when this is empty.
+        let sessionIdShort = String(snapshot.sessionId.prefix(8))
+
         return ClaudeStatsBlockSnapshot(
+            sessionIdShort: sessionIdShort,
             tokensTotalLabel: tokensTotalLabel,
             tokensSessionLabel: tokensSessionLabel,
             ctx: ctxRow,
@@ -90,6 +97,7 @@ enum ClaudeStatsAggregator {
         let suffix = "compact \(compactCount)×"
         let ctx = block.ctx
         mutable = ClaudeStatsBlockSnapshot(
+            sessionIdShort: block.sessionIdShort,
             tokensTotalLabel: block.tokensTotalLabel,
             tokensSessionLabel: block.tokensSessionLabel,
             ctx: .init(percent: ctx.percent, percentLabel: ctx.percentLabel, extraLabel: suffix),

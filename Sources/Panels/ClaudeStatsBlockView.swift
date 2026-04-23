@@ -47,6 +47,10 @@ struct ClaudeStatsBlockView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if !snapshot.sessionIdShort.isEmpty {
+                sessionIdentityRow
+                    .padding(.bottom, 2)
+            }
             tokensRow
                 .padding(.bottom, 4)
             ctxRow(snapshot.ctx)
@@ -95,6 +99,29 @@ struct ClaudeStatsBlockView: View {
                 .truncationMode(.tail)
         }
         .font(.system(size: 11, design: .monospaced))
+    }
+
+    /// "session a1b2c3d4" identity line above the tokens row. Kept monospaced
+    /// + faint so it reads as metadata, not a primary value. The "session"
+    /// label here is the agent-session identifier; the `tokensSessionLabel`
+    /// on the right of `tokensRow` is the per-call token count — sharing the
+    /// word "session" was the source of the confusion this row is meant to
+    /// disambiguate.
+    private var sessionIdentityRow: some View {
+        HStack(spacing: 6) {
+            Text(String(
+                localized: "sidebar.claudeStats.sessionIdLabel",
+                defaultValue: "session"
+            ))
+            .foregroundColor(fgFaint)
+            Text(snapshot.sessionIdShort)
+                .foregroundColor(fgDim)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11, design: .monospaced))
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .help(Text(snapshot.sessionIdShort))
     }
 
     private func ctxRow(_ row: ClaudeStatsBlockSnapshot.BarRow) -> some View {

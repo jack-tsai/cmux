@@ -8,6 +8,14 @@ import Foundation
 // MARK: - Full block (focused workspace row)
 
 struct ClaudeStatsBlockSnapshot: Equatable, Hashable {
+    /// Short prefix (first 8 chars) of the Claude session id for this
+    /// surface. Displayed as a small identity row above the stats so the
+    /// user can tell which agent session the tokens belong to — the
+    /// "session NK" label on the right of `tokensRow` is the current-call
+    /// token total, not the id. Empty string when the aggregator didn't
+    /// see a valid sessionId (row is hidden in that case).
+    let sessionIdShort: String
+
     /// Left side of tokens row — all-time session total, formatted.
     let tokensTotalLabel: String
     /// Right side of tokens row — current-usage breakdown or "session NK".

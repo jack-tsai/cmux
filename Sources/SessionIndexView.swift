@@ -488,6 +488,12 @@ private struct SessionRow: View, Equatable {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
+            if !shortSessionId.isEmpty {
+                Text(shortSessionId)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.55))
+                    .fixedSize()
+            }
             Text(relativeTime(entry.modified))
                 .font(.system(size: 12).monospacedDigit())
                 .foregroundColor(.secondary.opacity(0.65))
@@ -527,11 +533,22 @@ private struct SessionRow: View, Equatable {
 
     private var helpText: String {
         var lines: [String] = [entry.displayTitle]
+        if !entry.sessionId.isEmpty {
+            lines.append(entry.sessionId)
+        }
         if let cwd = entry.cwdLabel {
             lines.append(cwd)
         }
         lines.append(absoluteTime(entry.modified))
         return lines.joined(separator: "\n")
+    }
+
+    /// Short prefix of the native session id. Matches the "first 8" style git
+    /// uses for short SHAs; the full id is on the tooltip. Empty when the
+    /// upstream JSON/SQLite parse didn't find one so the row doesn't render
+    /// an empty badge.
+    private var shortSessionId: String {
+        String(entry.sessionId.prefix(8))
     }
 
     private func relativeTime(_ date: Date) -> String {
@@ -993,6 +1010,17 @@ private struct PopoverRow: View, Equatable {
         .fixedSize()
     }
 
+    private var popoverHelpText: String {
+        var lines: [String] = [entry.displayTitle]
+        if !entry.sessionId.isEmpty {
+            lines.append(entry.sessionId)
+        }
+        if let cwd = entry.cwdLabel {
+            lines.append(cwd)
+        }
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             Image(entry.agent.assetName)
@@ -1010,6 +1038,12 @@ private struct PopoverRow: View, Equatable {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
+            if !entry.sessionId.isEmpty {
+                Text(String(entry.sessionId.prefix(8)))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.55))
+                    .fixedSize()
+            }
             modifiedText
         }
         .padding(.horizontal, 12)
@@ -1022,7 +1056,7 @@ private struct PopoverRow: View, Equatable {
         .onDrag {
             sessionDragItemProvider(for: entry)
         }
-        .help(entry.cwdLabel ?? entry.displayTitle)
+        .help(popoverHelpText)
         .contextMenu {
             sessionRowMenuItems(entry: entry, onResume: { _ in onActivate() })
         }
