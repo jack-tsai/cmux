@@ -55,9 +55,13 @@ private struct ScreenshotListRow: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(theme.cellBackground)
                 if let image {
+                    // Give the Image its own frame first, then clip — without
+                    // the frame the .aspectRatio(.fill) lets the image bleed
+                    // outside the row into adjacent rows.
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(width: 72, height: 54)
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
             }
