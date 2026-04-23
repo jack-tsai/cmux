@@ -35,7 +35,11 @@ struct ScreenshotPanelTheme: Equatable {
             faint: .secondary,
             divider: Color(nsColor: .separatorColor),
             selection: .accentColor,
-            cellBackground: Color(nsColor: .controlBackgroundColor)
+            // .textBackgroundColor is white in Light Appearance and a very
+            // dark near-black in Dark Appearance — lighter contrast against
+            // the SidebarBackdrop tint than .controlBackgroundColor in
+            // Light mode (which composited to mid-grey over the tint).
+            cellBackground: Color(nsColor: .textBackgroundColor)
         )
     }
 }
