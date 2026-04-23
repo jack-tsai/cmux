@@ -23,6 +23,10 @@ struct ScreenshotPanelView: View {
     )
     @State private var previewImage: NSImage?
     @State private var now: Date = Date()
+    /// UX pagination: start with the newest 30 so huge folders don't spawn
+    /// 1 000 thumbnail requests at once. 'Load more' reveals another 30.
+    @State private var visibleLimit: Int = 30
+    private static let pageSize: Int = 30
 
     /// Tick the `now` value every 30 s so the list view's relative-time labels
     /// refresh without individual row timers.
@@ -35,6 +39,16 @@ struct ScreenshotPanelView: View {
     private var selectedEntry: ScreenshotEntry? {
         guard let selectedId else { return nil }
         return store.entries.first(where: { $0.id == selectedId })
+    }
+
+    /// Paginated view of the store's entries — always honors `visibleLimit`
+    /// so adding entries (watcher reload) doesn't suddenly expand the list.
+    private var visibleEntries: [ScreenshotEntry] {
+        Array(store.entries.prefix(visibleLimit))
+    }
+
+    private var hasMoreEntries: Bool {
+        store.entries.count > visibleLimit
     }
 
     private var actions: ScreenshotGalleryActions {
@@ -221,23 +235,49 @@ struct ScreenshotPanelView: View {
 
     @ViewBuilder
     private var galleryArea: some View {
-        switch viewMode {
-        case .grid:
-            ScreenshotGalleryGridView(
-                entries: store.entries,
-                selectedId: selectedId,
-                theme: theme,
-                actions: actions
-            )
-        case .list:
-            ScreenshotGalleryListView(
-                entries: store.entries,
-                selectedId: selectedId,
-                theme: theme,
-                now: now,
-                actions: actions
-            )
+        VStack(spacing: 0) {
+            switch viewMode {
+            case .grid:
+                ScreenshotGalleryGridView(
+                    entries: visibleEntries,
+                    selectedId: selectedId,
+                    theme: theme,
+                    actions: actions
+                )
+            case .list:
+                ScreenshotGalleryListView(
+                    entries: visibleEntries,
+                    selectedId: selectedId,
+                    theme: theme,
+                    now: now,
+                    actions: actions
+                )
+            }
+            if hasMoreEntries {
+                loadMoreFooter
+            }
         }
+    }
+
+    private var loadMoreFooter: some View {
+        Button {
+            visibleLimit = min(visibleLimit + Self.pageSize, store.entries.count)
+        } label: {
+            Text(String(
+                format: String(
+                    localized: "screenshotPanel.loadMore",
+                    defaultValue: "Load more (%d of %d shown)"
+                ),
+                visibleEntries.count,
+                store.entries.count
+            ))
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(theme.dim)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .background(theme.cellBackground.opacity(0.5))
     }
 
     // MARK: - Empty state

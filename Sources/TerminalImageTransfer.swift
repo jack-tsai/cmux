@@ -397,13 +397,17 @@ extension TerminalImageTransferPlanner {
             throw TerminalImageTransferError.noFocusedTerminal
         }
 
-        let pasteboardName = NSPasteboard.Name("cmux.screenshotPanel.paste.\(UUID().uuidString)")
-        let pasteboard = NSPasteboard(name: pasteboardName)
-        writeScreenshotEntry(fileURL: fileURL, to: pasteboard)
+        // Use the SYSTEM pasteboard, not a synthetic per-call NSPasteboard.
+        // TUI apps with image-paste support (Claude Code → `[Image #N]`)
+        // read `NSPasteboard.general` directly when they see a paste event;
+        // a unique-name pasteboard is invisible to them. Writing both a
+        // file URL *and* the decoded image bytes lets the target app pick
+        // whichever representation it prefers.
+        writeScreenshotEntry(fileURL: fileURL, to: NSPasteboard.general)
 
         // Dispatch via the existing drop pipeline. Handles local insert and
         // SSH/remote upload uniformly — matches ⌘V-of-Finder behavior.
-        _ = target.surface.performImageTransferPaste(pasteboard)
+        _ = target.surface.performImageTransferPaste(NSPasteboard.general)
         _ = tabManager // reserved for future routing (focus change, etc.)
     }
 }

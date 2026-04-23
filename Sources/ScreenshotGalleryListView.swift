@@ -52,16 +52,16 @@ private struct ScreenshotListRow: View {
     var body: some View {
         HStack(spacing: 8) {
             ZStack {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(theme.cellBackground)
                 if let image {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
             }
-            .frame(width: 32, height: 24)
+            .frame(width: 48, height: 36)
 
             Text(snapshot.filename)
                 .font(.system(size: 11, design: .monospaced))
@@ -100,7 +100,7 @@ private struct ScreenshotListRow: View {
             ScreenshotThumbnailCache.shared.requestThumbnail(
                 for: snapshot.url,
                 mtime: snapshot.mtime,
-                pixelSize: 64
+                pixelSize: 128
             ) { image in
                 self.image = image
                 continuation.resume()
