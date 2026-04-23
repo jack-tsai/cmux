@@ -38,6 +38,7 @@ cmux 的右側 sidebar 已經有 Files / Sessions 兩個 mode（見 `Sources/Rig
 - **Multiple folders**：v1 只支援單一 folder。要看多個 folder 延後。
 - **Remote path**：SSH workspace 的遠端 folder 不 watch；panel 只讀本機。
 - **Non-image 檔案**：mp4 / pdf / psd 等暫不支援；副檔名 white-list 嚴格。
+- **多選（multi-select）**：v1 gallery 只支援單一 selection。不做 `⌘-click` 加選 / `shift-click` 連續選。Paste / Copy / Drag / Rename / Trash 全部只作用在目前 `selectedId` 那一張。多檔同時 paste 需要 `TerminalImageTransfer` 擴充多 URL 分支，scope 留給後續 change。
 
 ## Capabilities
 

@@ -91,6 +91,10 @@ final class CmuxSettingsFileStore {
         "browser.reactGrabVersion",
         "shortcuts.showModifierHoldHints",
         "shortcuts.bindings",
+        // Screenshot panel — spec `screenshot-panel-settings` 'settings.json sync'.
+        "screenshotPanel.path",
+        "screenshotPanel.viewMode",
+        "screenshotPanel.showsRightSidebarTab",
     ]
 
     private static let releaseBundleIdentifier = "com.cmuxterm.app"
@@ -379,8 +383,31 @@ final class CmuxSettingsFileStore {
         if let shortcutsSection = root["shortcuts"] {
             parseShortcutsSection(shortcutsSection, sourcePath: sourcePath, snapshot: &snapshot)
         }
+        if let screenshotPanelSection = root["screenshotPanel"] as? [String: Any] {
+            parseScreenshotPanelSection(screenshotPanelSection, sourcePath: sourcePath, snapshot: &snapshot)
+        }
 
         return snapshot
+    }
+
+    private func parseScreenshotPanelSection(
+        _ section: [String: Any],
+        sourcePath: String,
+        snapshot: inout ResolvedSettingsSnapshot
+    ) {
+        if let raw = jsonString(section["path"]) {
+            snapshot.managedUserDefaults[ScreenshotPanelSettingsKey.path] = .string(raw)
+        }
+        if let raw = jsonString(section["viewMode"]) {
+            guard ["grid", "list"].contains(raw) else {
+                logInvalid("screenshotPanel.viewMode", sourcePath: sourcePath)
+                return
+            }
+            snapshot.managedUserDefaults[ScreenshotPanelSettingsKey.viewMode] = .string(raw)
+        }
+        if let value = jsonBool(section["showsRightSidebarTab"]) {
+            snapshot.managedUserDefaults[ScreenshotPanelSettingsKey.showsRightSidebarTab] = .bool(value)
+        }
     }
 
     private func parseAppSection(

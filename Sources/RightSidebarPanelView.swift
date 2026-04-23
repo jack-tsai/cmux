@@ -5,11 +5,13 @@ import SwiftUI
 enum RightSidebarMode: String, CaseIterable {
     case files
     case sessions
+    case screenshots
 
     var label: String {
         switch self {
         case .files: return String(localized: "rightSidebar.mode.files", defaultValue: "Files")
         case .sessions: return String(localized: "rightSidebar.mode.sessions", defaultValue: "Sessions")
+        case .screenshots: return String(localized: "rightSidebar.mode.screenshots", defaultValue: "Shots")
         }
     }
 
@@ -17,6 +19,31 @@ enum RightSidebarMode: String, CaseIterable {
         switch self {
         case .files: return "folder"
         case .sessions: return "bubble.left.and.text.bubble.right"
+        case .screenshots: return "camera"
+        }
+    }
+}
+
+/// Decides whether a target `RightSidebarMode` should be flipped back to `.files`
+/// because the corresponding feature toggle is off. Pure function for easy testing.
+enum RightSidebarModeGate {
+    static func resolve(
+        current: RightSidebarMode,
+        showsScreenshotsTab: Bool
+    ) -> RightSidebarMode {
+        if current == .screenshots && !showsScreenshotsTab {
+            return .files
+        }
+        return current
+    }
+
+    /// Filter the chips to render based on feature toggles.
+    static func visibleModes(showsScreenshotsTab: Bool) -> [RightSidebarMode] {
+        RightSidebarMode.allCases.filter { mode in
+            switch mode {
+            case .screenshots: return showsScreenshotsTab
+            case .files, .sessions: return true
+            }
         }
     }
 }
@@ -27,6 +54,18 @@ struct RightSidebarPanelView: View {
     @ObservedObject var fileExplorerState: FileExplorerState
     @ObservedObject var sessionIndexStore: SessionIndexStore
     let onResumeSession: ((SessionEntry) -> Void)?
+    /// Paste a screenshot into the currently-focused terminal. Wired from
+    /// ContentView (which owns workspace/tabManager) via
+    /// `TerminalImageTransferPlanner.pasteFileURL`. Default is a no-op so
+    /// existing call sites compile; the real app must provide it.
+    var onScreenshotPaste: ((URL) -> Void)? = nil
+
+    @AppStorage(ScreenshotPanelSettingsKey.showsRightSidebarTab)
+    private var showsScreenshotsTab: Bool = true
+
+    @StateObject private var screenshotStore = ScreenshotStore(
+        path: ScreenshotPanelPathResolver.resolve()
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,11 +76,28 @@ struct RightSidebarPanelView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("RightSidebar")
+        .onChange(of: showsScreenshotsTab) { newValue in
+            fileExplorerState.mode = RightSidebarModeGate.resolve(
+                current: fileExplorerState.mode,
+                showsScreenshotsTab: newValue
+            )
+        }
+        .onAppear {
+            // Apply gate once on appear so a toggled-off state persisted from a
+            // previous session cannot land us in `.screenshots`.
+            fileExplorerState.mode = RightSidebarModeGate.resolve(
+                current: fileExplorerState.mode,
+                showsScreenshotsTab: showsScreenshotsTab
+            )
+        }
     }
 
     private var modeBar: some View {
         HStack(spacing: 4) {
-            ForEach(RightSidebarMode.allCases, id: \.rawValue) { mode in
+            ForEach(
+                RightSidebarModeGate.visibleModes(showsScreenshotsTab: showsScreenshotsTab),
+                id: \.rawValue
+            ) { mode in
                 ModeBarButton(
                     mode: mode,
                     isSelected: fileExplorerState.mode == mode
@@ -75,6 +131,11 @@ struct RightSidebarPanelView: View {
                 .onAppear {
                     sessionIndexStore.setCurrentDirectoryIfChanged(sessionIndexDirectory)
                 }
+        case .screenshots:
+            ScreenshotPanelView(
+                store: screenshotStore,
+                onActivate: onScreenshotPaste ?? { _ in }
+            )
         }
     }
 

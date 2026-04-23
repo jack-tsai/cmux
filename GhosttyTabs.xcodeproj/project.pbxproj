@@ -164,6 +164,22 @@
 		FE003101 /* SessionIndexStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE003001 /* SessionIndexStore.swift */; };
 		FE003102 /* SessionIndexView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE003002 /* SessionIndexView.swift */; };
 		FE003103 /* RightSidebarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE003003 /* RightSidebarPanelView.swift */; };
+		CA5F0101 /* ScreenshotPanelSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0001 /* ScreenshotPanelSettings.swift */; };
+		CA5F0102 /* ScreenshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0002 /* ScreenshotStore.swift */; };
+		CA5F0103 /* ScreenshotPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0003 /* ScreenshotPanelView.swift */; };
+		CA5F0104 /* ScreenshotThumbnailCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0004 /* ScreenshotThumbnailCache.swift */; };
+		CA5F0105 /* ScreenshotRelativeTimeFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0005 /* ScreenshotRelativeTimeFormatter.swift */; };
+		CA5F0106 /* ScreenshotPanelTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0006 /* ScreenshotPanelTheme.swift */; };
+		CA5F0107 /* ScreenshotGalleryGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0007 /* ScreenshotGalleryGridView.swift */; };
+		CA5F0108 /* ScreenshotGalleryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0008 /* ScreenshotGalleryListView.swift */; };
+		CA5F0109 /* ScreenshotEntryActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F0009 /* ScreenshotEntryActions.swift */; };
+		CA5F010A /* ScreenshotPanelDebugWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F000A /* ScreenshotPanelDebugWindow.swift */; };
+		CA5F1106 /* ScreenshotTerminalPasteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F1006 /* ScreenshotTerminalPasteTests.swift */; };
+		CA5F1101 /* ScreenshotPathResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F1001 /* ScreenshotPathResolverTests.swift */; };
+		CA5F1102 /* ScreenshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F1002 /* ScreenshotStoreTests.swift */; };
+		CA5F1103 /* RightSidebarModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F1003 /* RightSidebarModeTests.swift */; };
+		CA5F1104 /* ScreenshotThumbnailCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F1004 /* ScreenshotThumbnailCacheTests.swift */; };
+		CA5F1105 /* ScreenshotRelativeTimeFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F1005 /* ScreenshotRelativeTimeFormatterTests.swift */; };
 		CAFE0101 /* GitGraphProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0001 /* GitGraphProvider.swift */; };
 		CAFE1101 /* GitGraphProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE1001 /* GitGraphProviderTests.swift */; };
 		DF000101 /* FilePreviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF000001 /* FilePreviewPanel.swift */; };
@@ -426,6 +442,22 @@
 		FE003003 /* RightSidebarPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightSidebarPanelView.swift; sourceTree = "<group>"; };
 		IC000002 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder; path = AppIcon.icon; sourceTree = "<group>"; };
 		CAFE0001 /* GitGraphProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphProvider.swift; sourceTree = "<group>"; };
+		CA5F0001 /* ScreenshotPanelSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotPanelSettings.swift; sourceTree = "<group>"; };
+		CA5F0002 /* ScreenshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStore.swift; sourceTree = "<group>"; };
+		CA5F0003 /* ScreenshotPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotPanelView.swift; sourceTree = "<group>"; };
+		CA5F0004 /* ScreenshotThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotThumbnailCache.swift; sourceTree = "<group>"; };
+		CA5F0005 /* ScreenshotRelativeTimeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotRelativeTimeFormatter.swift; sourceTree = "<group>"; };
+		CA5F0006 /* ScreenshotPanelTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotPanelTheme.swift; sourceTree = "<group>"; };
+		CA5F0007 /* ScreenshotGalleryGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotGalleryGridView.swift; sourceTree = "<group>"; };
+		CA5F0008 /* ScreenshotGalleryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotGalleryListView.swift; sourceTree = "<group>"; };
+		CA5F0009 /* ScreenshotEntryActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEntryActions.swift; sourceTree = "<group>"; };
+		CA5F000A /* ScreenshotPanelDebugWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotPanelDebugWindow.swift; sourceTree = "<group>"; };
+		CA5F1006 /* ScreenshotTerminalPasteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTerminalPasteTests.swift; sourceTree = "<group>"; };
+		CA5F1001 /* ScreenshotPathResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotPathResolverTests.swift; sourceTree = "<group>"; };
+		CA5F1002 /* ScreenshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStoreTests.swift; sourceTree = "<group>"; };
+		CA5F1003 /* RightSidebarModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightSidebarModeTests.swift; sourceTree = "<group>"; };
+		CA5F1004 /* ScreenshotThumbnailCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotThumbnailCacheTests.swift; sourceTree = "<group>"; };
+		CA5F1005 /* ScreenshotRelativeTimeFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotRelativeTimeFormatterTests.swift; sourceTree = "<group>"; };
 		CAFE1001 /* GitGraphProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphProviderTests.swift; sourceTree = "<group>"; };
 		DF000001 /* FilePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewPanel.swift; sourceTree = "<group>"; };
 		DF000002 /* FilePreviewPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewPanelView.swift; sourceTree = "<group>"; };
@@ -686,6 +718,16 @@
 				CA5E0011 /* ClaudeSettingsInspector.swift */,
 				A5003100 /* MermaidRenderer.swift */,
 				A5003102 /* MermaidBlockView.swift */,
+				CA5F0001 /* ScreenshotPanelSettings.swift */,
+				CA5F0002 /* ScreenshotStore.swift */,
+				CA5F0003 /* ScreenshotPanelView.swift */,
+				CA5F0004 /* ScreenshotThumbnailCache.swift */,
+				CA5F0005 /* ScreenshotRelativeTimeFormatter.swift */,
+				CA5F0006 /* ScreenshotPanelTheme.swift */,
+				CA5F0007 /* ScreenshotGalleryGridView.swift */,
+				CA5F0008 /* ScreenshotGalleryListView.swift */,
+				CA5F0009 /* ScreenshotEntryActions.swift */,
+				CA5F000A /* ScreenshotPanelDebugWindow.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -757,42 +799,14 @@
 				CA5E1005 /* ClaudeStatsAggregatorTests.swift */,
 				CA5E1006 /* ClaudeSettingsInspectorTests.swift */,
 				A5003200 /* MermaidRendererTests.swift */,
+				CA5F1001 /* ScreenshotPathResolverTests.swift */,
+				CA5F1002 /* ScreenshotStoreTests.swift */,
+				CA5F1003 /* RightSidebarModeTests.swift */,
+				CA5F1004 /* ScreenshotThumbnailCacheTests.swift */,
+				CA5F1005 /* ScreenshotRelativeTimeFormatterTests.swift */,
+				CA5F1006 /* ScreenshotTerminalPasteTests.swift */,
 			);
 			path = cmuxTests;
-			sourceTree = "<group>";
-		};
-		A5001040 = {
-			isa = PBXGroup;
-			children = (
-				A5001041 /* Sources */,
-				B9000003A1B2C3D4E5F60719 /* CLI */,
-				087C454FFF74443AB06942C3 /* Resources */,
-				A5001101 /* Assets.xcassets */,
-				IC000002 /* AppIcon.icon */,
-				A5001016 /* GhosttyKit.xcframework */,
-				A5001017 /* ghostty.h */,
-				A5001018 /* cmux-Bridging-Header.h */,
-				3196C9C2D01F054C1D3385DD /* cmuxUITests */,
-				F1000003A1B2C3D4E5F60718 /* cmuxTests */,
-				A5001042 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		A5001040 = {
-			isa = PBXGroup;
-			children = (
-				A5001041 /* Sources */,
-				B9000003A1B2C3D4E5F60719 /* CLI */,
-				087C454FFF74443AB06942C3 /* Resources */,
-				A5001101 /* Assets.xcassets */,
-				IC000002 /* AppIcon.icon */,
-				A5001016 /* GhosttyKit.xcframework */,
-				A5001017 /* ghostty.h */,
-				A5001018 /* cmux-Bridging-Header.h */,
-				3196C9C2D01F054C1D3385DD /* cmuxUITests */,
-				F1000003A1B2C3D4E5F60718 /* cmuxTests */,
-				A5001042 /* Products */,
-			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1132,6 +1146,16 @@
 				CAFE0101 /* GitGraphProvider.swift in Sources */,
 				A5003101 /* MermaidRenderer.swift in Sources */,
 				A5003103 /* MermaidBlockView.swift in Sources */,
+				CA5F0101 /* ScreenshotPanelSettings.swift in Sources */,
+				CA5F0102 /* ScreenshotStore.swift in Sources */,
+				CA5F0103 /* ScreenshotPanelView.swift in Sources */,
+				CA5F0104 /* ScreenshotThumbnailCache.swift in Sources */,
+				CA5F0105 /* ScreenshotRelativeTimeFormatter.swift in Sources */,
+				CA5F0106 /* ScreenshotPanelTheme.swift in Sources */,
+				CA5F0107 /* ScreenshotGalleryGridView.swift in Sources */,
+				CA5F0108 /* ScreenshotGalleryListView.swift in Sources */,
+				CA5F0109 /* ScreenshotEntryActions.swift in Sources */,
+				CA5F010A /* ScreenshotPanelDebugWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1224,6 +1248,12 @@
 				CA5E1105 /* ClaudeStatsAggregatorTests.swift in Sources */,
 				CA5E1106 /* ClaudeSettingsInspectorTests.swift in Sources */,
 				A5003201 /* MermaidRendererTests.swift in Sources */,
+				CA5F1101 /* ScreenshotPathResolverTests.swift in Sources */,
+				CA5F1102 /* ScreenshotStoreTests.swift in Sources */,
+				CA5F1103 /* RightSidebarModeTests.swift in Sources */,
+				CA5F1104 /* ScreenshotThumbnailCacheTests.swift in Sources */,
+				CA5F1105 /* ScreenshotRelativeTimeFormatterTests.swift in Sources */,
+				CA5F1106 /* ScreenshotTerminalPasteTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

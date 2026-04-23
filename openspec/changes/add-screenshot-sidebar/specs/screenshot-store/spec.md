@@ -79,6 +79,23 @@ The store SHALL install a `DispatchSource` file system object watcher on the con
 - **AND** a new watcher SHALL be installed on the new folder
 - **AND** the entries SHALL be reloaded from the new folder
 
+### Requirement: Exclude files with in-flight writes via mtime stability delay
+
+The store SHALL exclude from `entries` any file whose modification time is less than 300 ms older than the scan's start time (i.e. `scanStart - mtime < 300 ms`). Such files SHALL NOT appear in `entries` on the current scan; the next debounced reload SHALL reconsider them. This prevents half-written screenshots from being surfaced while `screencapture` is still writing.
+
+#### Scenario: Screencapture writes a new PNG, watcher fires mid-write
+
+- **WHEN** `screencapture` starts writing `new.png` at time t
+- **AND** DispatchSource `.write` fires and the debounced reload runs at `t + 50 ms`
+- **AND** the file's mtime at reload-start is `t + 40 ms`
+- **THEN** `new.png` SHALL NOT be included in `entries` on that reload
+- **AND** once the next debounced reload runs after the file's mtime stabilises (≥ 300 ms old) the file SHALL appear at `entries[0]`
+
+#### Scenario: Existing stable file remains included
+
+- **WHEN** a file's mtime is 10 s old at scan time
+- **THEN** the file SHALL be included in `entries` (the 300 ms cutoff applies only to very-recent mtimes)
+
 ### Requirement: Watcher fallback to polling on network file systems
 
 When the configured folder resides on a file system type of `nfs`, `smbfs`, `webdav`, or `osxfuse` (detected via `statfs`), the store SHALL replace the `DispatchSource` watcher with a 5-second polling timer. Local APFS / HFS+ volumes SHALL use the `DispatchSource` watcher.

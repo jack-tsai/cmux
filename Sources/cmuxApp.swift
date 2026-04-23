@@ -362,6 +362,9 @@ struct cmuxApp: App {
                     Button("Settings/About Titlebar Debug…") {
                         SettingsAboutTitlebarDebugWindowController.shared.show()
                     }
+                    Button("Screenshot Panel Debug…") {
+                        ScreenshotPanelDebugWindowController.shared.show()
+                    }
                     Button("Sidebar Debug…") {
                         SidebarDebugWindowController.shared.show()
                     }
