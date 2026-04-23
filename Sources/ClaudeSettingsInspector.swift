@@ -51,16 +51,32 @@ final class ClaudeSettingsInspector {
     /// time (via Info.plist) so the spec's requirement — Release → `cmux` and
     /// tagged → `cmux-dev` — resolves automatically. For unit tests we fall
     /// back to `cmux` so deterministic assertions hold.
+    ///
+    /// The command string is an **absolute path** to the bundled CLI binary,
+    /// not a bare name. The bare-name form used to be written here, which
+    /// sent Claude's hook dispatcher to whatever `cmux` happened to win the
+    /// `$PATH` race — on at least one user's machine that was Oracle Instant
+    /// Client's `cmux`, which cheerfully prints "OK" and exits 0, swallowing
+    /// the hook call and leaving `~/.cmuxterm/claude-hook-sessions.json`
+    /// unwritten. Pinning to the `.app` bundle's copy of the CLI sidesteps
+    /// every PATH-shadowing class of bug for the same cost as the bare form.
     static var defaultStatusLineCommand: String {
-        let binaryName = Bundle.main.object(forInfoDictionaryKey: "CMUXCLIBinaryName") as? String
-        let prefix = binaryName?.trimmingCharacters(in: .whitespaces).nonEmpty ?? "cmux"
-        return "\(prefix) statusline"
+        "\(bundledCLIAbsolutePath) statusline"
     }
 
     static var defaultCompactHookCommand: String {
+        "\(bundledCLIAbsolutePath) record-compact"
+    }
+
+    /// Absolute path to the bundled `cmux` (or `cmux-dev`) CLI, resolved off
+    /// the running app bundle. Falls back to the bare binary name when the
+    /// bundle resource path is unavailable (unit tests) so string assertions
+    /// against the default commands still hold.
+    static var bundledCLIAbsolutePath: String {
         let binaryName = Bundle.main.object(forInfoDictionaryKey: "CMUXCLIBinaryName") as? String
-        let prefix = binaryName?.trimmingCharacters(in: .whitespaces).nonEmpty ?? "cmux"
-        return "\(prefix) record-compact"
+        let name = binaryName?.trimmingCharacters(in: .whitespaces).nonEmpty ?? "cmux"
+        guard let resourcePath = Bundle.main.resourcePath else { return name }
+        return "\(resourcePath)/bin/\(name)"
     }
 
     // MARK: - Session-tracking hooks
@@ -93,13 +109,15 @@ final class ClaudeSettingsInspector {
     ]
 
     /// Concrete command strings for each session-tracking hook, resolved
-    /// against the active binary name (`cmux` or `cmux-dev`). Computed so
-    /// tagged Debug builds get `cmux-dev claude-hook …` without test setup.
+    /// against the bundled CLI's **absolute path** (`cmux` or `cmux-dev`).
+    /// Absolute on purpose — see `defaultStatusLineCommand` for the PATH
+    /// collision story. The user whose diagnosis triggered this fix had a
+    /// different `cmux` (Oracle Instant Client) winning PATH resolution, so
+    /// the bare-name hook quietly no-op'd on every invocation.
     var desiredSessionHookCommands: [(event: String, command: String)] {
-        let binaryName = Bundle.main.object(forInfoDictionaryKey: "CMUXCLIBinaryName") as? String
-        let prefix = binaryName?.trimmingCharacters(in: .whitespaces).nonEmpty ?? "cmux"
+        let binary = Self.bundledCLIAbsolutePath
         return Self.claudeSessionHookEvents.map {
-            (event: $0.event, command: "\(prefix) claude-hook \($0.subcommand)")
+            (event: $0.event, command: "\(binary) claude-hook \($0.subcommand)")
         }
     }
 
@@ -151,29 +169,37 @@ final class ClaudeSettingsInspector {
     }
 
     /// True when every Claude event in `claudeSessionHookEvents` has at
-    /// least one hook entry pointing at `cmux claude-hook <subcommand>`.
-    /// Used by the migration path on app start to decide whether an
-    /// already-"connected" user (statusLine set, pre-session-hooks era)
-    /// needs to have the session hooks appended. Returns false on a
-    /// missing / unreadable settings file too.
+    /// least one hook entry whose command exactly matches the current
+    /// `desiredSessionHookCommands` target (absolute path to this bundle's
+    /// CLI). Used by the migration path on app start to decide whether an
+    /// already-"connected" user needs the session hooks re-written. Returns
+    /// false on a missing / unreadable settings file too.
+    ///
+    /// Why exact-match on the absolute path: an older cmux release installed
+    /// these hooks as a bare name (`cmux claude-hook …`). If that lands
+    /// ahead of the real cmux in `$PATH` (Oracle Instant Client ships a
+    /// `cmux`, so this isn't hypothetical), the hook silently no-ops.
+    /// Requiring the exact absolute-path command means the migration re-runs
+    /// on upgrade and appends the reliable form alongside whatever was there
+    /// before. `mergeCommandHook` is idempotent on the new command, so this
+    /// stabilises after one migration tick.
     func hasCompleteSessionTrackingSetup() -> Bool {
         guard let data = try? Data(contentsOf: settingsURL),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return false
         }
         let hooksDict = (parsed["hooks"] as? [String: Any]) ?? [:]
-        for entry in Self.claudeSessionHookEvents {
+        for entry in desiredSessionHookCommands {
             guard let eventEntries = hooksDict[entry.event] as? [[String: Any]] else {
                 return false
             }
-            let hasCmuxHook = eventEntries.contains { outer in
+            let hasDesired = eventEntries.contains { outer in
                 guard let nested = outer["hooks"] as? [[String: Any]] else { return false }
                 return nested.contains { hook in
-                    guard let command = hook["command"] as? String else { return false }
-                    return Self.isCmuxClaudeHookCommand(command, subcommand: entry.subcommand)
+                    (hook["command"] as? String) == entry.command
                 }
             }
-            if !hasCmuxHook { return false }
+            if !hasDesired { return false }
         }
         return true
     }
